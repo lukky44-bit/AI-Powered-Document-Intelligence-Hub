@@ -18,6 +18,6 @@ def signup(data: dict, db: Session = Depends(get_db)):
 def login(data: dict, db: Session = Depends(get_db)):
     token = login_user(db, data["email"], data["password"])
     if not token:
-        raise HTTPException(status_code=401, message="Invalid credentials")
+        raise HTTPException(status_code=401, detail="Invalid credentials")
     else:
         return {"token": token, "token_type": "bearer"}

@@ -4,7 +4,11 @@ from app.core.security import hash_password, verify_password, create_access_toke
 
 
 def create_user(db: Session, username: str, password: str, email: str):
-    user = User(username=username, email=email, hashed_password=hash_password(password))
+    # Ensure password is a string before hashing to avoid type errors
+    password_str = str(password)
+    user = User(
+        username=username, email=email, hashed_password=hash_password(password_str)
+    )
     db.add(user)
     db.commit()
     db.refresh(user)
