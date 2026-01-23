@@ -12,5 +12,11 @@ def save_file(file):
 
     with open(file_path, "wb") as f:
         f.write(file.file.read())
+    ext = filename.split(".")[-1].lower()
 
-    return {"file_id": file_id, "filename": filename, "path": file_path}
+    return {
+        "file_id": file_id,
+        "filename": filename,
+        "path": file_path,
+        "extension": ext,
+    }
