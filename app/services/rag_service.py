@@ -39,4 +39,4 @@ def generate_rag_answer(query: str, top_k: int, file_id: str = None):
 
     answer = response.choices[0].message.content
 
-    return {"query": query, "file_id": file_id, "answer": answer, "sources": docs}
+    return answer, docs
