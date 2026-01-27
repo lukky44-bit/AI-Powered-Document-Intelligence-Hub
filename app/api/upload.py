@@ -26,7 +26,7 @@ async def upload_file(
         file_id=data["file_id"],
         filename=data["filename"],
         path=data["path"],
-        uploaded_by=current_user,
+        uploaded_by=current_user["email"],
     )
 
     ext = data["extension"]

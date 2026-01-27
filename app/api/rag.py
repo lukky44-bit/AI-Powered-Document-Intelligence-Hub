@@ -4,6 +4,7 @@ from app.services.rag_service import generate_rag_answer
 from app.services.file_metadata_service import get_file_by_file_id
 from app.db.session import get_db
 from app.core.security import get_current_user
+from app.core.rbac import ROLE_MODE_MAP
 
 router = APIRouter()
 
@@ -19,6 +20,14 @@ def rag_answer(
         top_k = data.get("top_k", 3)
         file_id = data.get("file_id")
         mode = data.get("mode", "general")
+
+        user_role = current_user["role"]
+        allowed_modes = ROLE_MODE_MAP.get(user_role, [])
+        if mode not in allowed_modes and user_role != "admin":
+            raise HTTPException(
+                status_code=403,
+                detail=f"Role '{user_role}' is not allowed to use '{mode}' mode",
+            )
 
         answer, docs = generate_rag_answer(query, top_k, file_id, mode)
 

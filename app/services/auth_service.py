@@ -3,11 +3,16 @@ from app.models.user import User
 from app.core.security import hash_password, verify_password, create_access_token
 
 
-def create_user(db: Session, username: str, password: str, email: str):
+def create_user(
+    db: Session, username: str, password: str, email: str, role="researcher"
+):
     # Ensure password is a string before hashing to avoid type errors
     password_str = str(password)
     user = User(
-        username=username, email=email, hashed_password=hash_password(password_str)
+        username=username,
+        email=email,
+        hashed_password=hash_password(password_str),
+        role=role,
     )
     db.add(user)
     db.commit()
@@ -29,5 +34,5 @@ def login_user(db: Session, email: str, password: str):
     user = authenticate_user(db, email, password)
     if not user:
         return None
-    token = create_access_token({"sub": user.email})
+    token = create_access_token({"sub": user.email, "role": user.role})
     return token

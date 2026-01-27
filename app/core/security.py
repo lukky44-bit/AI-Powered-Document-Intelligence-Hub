@@ -33,11 +33,12 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         payload = jwt.decode(
             token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM]
         )
-        # Tokens we issue store email in the standard "sub" claim
+
         email = payload.get("sub")
-        if email is None:
-            raise HTTPException(status_code=401, detail="invalid token payload")
-        return email
+        role = payload.get("role")
+        if email is None or role is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        return {"email": email, "role": role}
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Token verification failed"

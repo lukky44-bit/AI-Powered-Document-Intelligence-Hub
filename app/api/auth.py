@@ -9,7 +9,11 @@ router = APIRouter()
 @router.post("/signup")
 def signup(data: dict, db: Session = Depends(get_db)):
     user = create_user(
-        db, username=data["username"], password=data["password"], email=data["email"]
+        db,
+        username=data["username"],
+        password=data["password"],
+        email=data["email"],
+        role=data.get("role", "researcher"),
     )
     return {"message": "User created Successfully", "Name": user.username}
 
