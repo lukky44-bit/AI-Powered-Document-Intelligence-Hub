@@ -1,9 +1,9 @@
 from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy.orm import Session
 from app.services.rag_service import generate_rag_answer
-from app.core.security import get_current_user
 from app.services.file_metadata_service import get_file_by_file_id
 from app.db.session import get_db
-from sqlalchemy.orm import Session
+from app.core.security import get_current_user
 
 router = APIRouter()
 
@@ -18,7 +18,10 @@ def rag_answer(
         query = data["query"]
         top_k = data.get("top_k", 3)
         file_id = data.get("file_id")
-        answer, docs = generate_rag_answer(query, top_k, file_id)
+        mode = data.get("mode", "general")
+
+        answer, docs = generate_rag_answer(query, top_k, file_id, mode)
+
         sources = []
         for d in docs:
             fid = d["metadata"]["doc_id"]
@@ -37,6 +40,7 @@ def rag_answer(
 
         return {
             "query": query,
+            "mode": mode,
             "answer": answer,
             "sources": sources,
             "user": current_user,
