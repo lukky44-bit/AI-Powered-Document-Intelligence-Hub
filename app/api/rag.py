@@ -10,7 +10,8 @@ def rag_answer(data: dict, current_user: str = Depends(get_current_user)):
     try:
         query = data["query"]
         top_k = data.get("top_k", 3)
-        result = generate_rag_answer(query, top_k)
+        file_id = data.get("file_id")
+        result = generate_rag_answer(query, top_k, file_id)
         result["user"] = current_user
 
         return result

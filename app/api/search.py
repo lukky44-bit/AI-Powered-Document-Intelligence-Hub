@@ -11,7 +11,8 @@ def similarity_serach(data: dict, current_user: str = Depends(get_current_user))
     try:
         query = data["query"]
         top_k = data.get("top_k", 3)
-        result = similarity_search(query, top_k)
-        return {"results": result, "user": current_user}
+        file_id = data.get["file_id"]
+        result = similarity_search(query, top_k, file_id)
+        return {"results": result, "file_id": file_id, "user": current_user}
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))

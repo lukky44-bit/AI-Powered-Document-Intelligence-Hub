@@ -5,8 +5,8 @@ from app.core.config import settings
 client = Groq(api_key=settings.GROQ_API_KEY)
 
 
-def generate_rag_answer(query: str, top_k: int):
-    docs = similarity_search(query, top_k)
+def generate_rag_answer(query: str, top_k: int, file_id: str = None):
+    docs = similarity_search(query, top_k, file_id)
     context = ""
 
     for i, d in enumerate(docs):
@@ -39,4 +39,4 @@ def generate_rag_answer(query: str, top_k: int):
 
     answer = response.choices[0].message.content
 
-    return {"query": query, "answer": answer, "sources": docs}
+    return {"query": query, "file_id": file_id, "answer": answer, "sources": docs}

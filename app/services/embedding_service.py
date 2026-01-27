@@ -49,12 +49,17 @@ def store_text(text: str, doc_id: str):
     }
 
 
-def similarity_search(query: str, top_k: int = 3):
+def similarity_search(query: str, top_k: int = 3, file_id: str = None):
     vectorstore = get_vector_store()
     if not vectorstore:
         raise ValueError("Vector store is empty. Store documents first.")
 
-    results = vectorstore.similarity_search(query, k=top_k)
+    if file_id:
+        results = vectorstore.similarity_search(
+            query, k=top_k, filter={"doc_id": file_id}
+        )
+    else:
+        results = vectorstore.similarity_search(query, k=top_k)
 
     formatted = []
     for doc in results:
