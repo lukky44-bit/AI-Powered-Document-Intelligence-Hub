@@ -9,6 +9,8 @@ from app.services.embedding_service import store_text
 
 from app.db.session import get_db
 from app.core.security import get_current_user
+from app.services.pdf_service import extract_text_from_pdf
+from app.services.docx_service import extract_text_from_docx
 
 router = APIRouter()
 
@@ -33,8 +35,14 @@ async def upload_file(
     text = ""
 
     try:
-        if ext in ["png", "jpg", "jpeg", "pdf"]:
+        if ext in ["pdf"]:
+            text = extract_text_from_pdf(data["path"])
+            if not text.strip():
+                text = extract_text(data["file_id"])
+        elif ext in ["png", "jpg", "jpeg"]:
             text = extract_text(data["file_id"])
+        elif ext in ["docx"]:
+            text = extract_text_from_docx(data["path"])
         elif ext in ["mp3", "wav", "m4a", "mp4"]:
             text = transcribe_audio(data["file_id"])
         else:
