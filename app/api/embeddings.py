@@ -7,7 +7,7 @@ router = APIRouter()
 
 
 @router.post("/store")
-def store_embeddings(data: dict, current_user: str = Depends(get_current_user)):
+def store_embeddings(data: dict, current_user: dict = Depends(get_current_user)):
     try:
         text = data["text"]
         doc_id = str(uuid.uuid4())

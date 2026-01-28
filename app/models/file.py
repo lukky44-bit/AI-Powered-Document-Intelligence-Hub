@@ -11,4 +11,5 @@ class File(Base):
     filename = Column(String)
     path = Column(String)
     uploaded_by = Column(String)
+    domain = Column(String)
     uploaded_at = Column(DateTime, default=datetime.utcnow)

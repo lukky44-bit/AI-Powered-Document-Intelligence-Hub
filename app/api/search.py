@@ -7,7 +7,7 @@ router = APIRouter()
 
 
 @router.post("/search")
-def similarity_serach(data: dict, current_user: str = Depends(get_current_user)):
+def similarity_serach(data: dict, current_user: dict = Depends(get_current_user)):
     try:
         query = data["query"]
         top_k = data.get("top_k", 3)

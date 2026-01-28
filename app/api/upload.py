@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Form
 from sqlalchemy.orm import Session
 
 from app.services.file_service import save_file
@@ -11,6 +11,8 @@ from app.db.session import get_db
 from app.core.security import get_current_user
 from app.services.pdf_service import extract_text_from_pdf
 from app.services.docx_service import extract_text_from_docx
+from app.core.rbac import ROLE_DOMAIN_MAP
+
 
 router = APIRouter()
 
@@ -18,9 +20,19 @@ router = APIRouter()
 @router.post("/file")
 async def upload_file(
     file: UploadFile = File(...),
+    file_domain: str = Form(...),
     db: Session = Depends(get_db),
-    current_user: str = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
+    user_role = current_user["role"]
+
+    if user_role != "admin":
+        allowed_domains = ROLE_DOMAIN_MAP.get(user_role, [])
+        if file_domain not in allowed_domains:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Role '{user_role}' cannot upload '{file_domain}' documents",
+            )
     data = save_file(file)
 
     save_file_metadata(
@@ -29,6 +41,7 @@ async def upload_file(
         filename=data["filename"],
         path=data["path"],
         uploaded_by=current_user["email"],
+        domain=file_domain,
     )
 
     ext = data["extension"]
