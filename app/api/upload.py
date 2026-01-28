@@ -12,6 +12,7 @@ from app.core.security import get_current_user
 from app.services.pdf_service import extract_text_from_pdf
 from app.services.docx_service import extract_text_from_docx
 from app.core.rbac import ROLE_DOMAIN_MAP
+from app.services.file_cleanup_service import delete_uploaded_file
 
 
 router = APIRouter()
@@ -62,6 +63,7 @@ async def upload_file(
             raise ValueError("Unsupported file type for indexing")
 
         store_text(text, data["file_id"])
+        delete_uploaded_file(data["path"])
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
