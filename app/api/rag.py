@@ -6,12 +6,16 @@ from app.services.file_metadata_service import get_file_by_file_id
 from app.db.session import get_db
 from app.core.security import get_current_user
 from app.core.rbac import ROLE_MODE_MAP, ROLE_DOMAIN_MAP
+from app.core.rate_limiter import limiter
+from fastapi import Request
 
 router = APIRouter()
 
 
 @router.post("/answer")
+@limiter.limit("3/minute")
 def rag_answer(
+    request: Request,
     data: dict,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),

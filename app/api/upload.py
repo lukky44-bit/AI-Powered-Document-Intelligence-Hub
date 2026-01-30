@@ -13,13 +13,17 @@ from app.services.pdf_service import extract_text_from_pdf
 from app.services.docx_service import extract_text_from_docx
 from app.core.rbac import ROLE_DOMAIN_MAP
 from app.services.file_cleanup_service import delete_uploaded_file
+from app.core.rate_limiter import limiter
+from fastapi import Request
 
 
 router = APIRouter()
 
 
 @router.post("/file")
+@limiter.limit("2/minute")
 async def upload_file(
+    request: Request,
     file: UploadFile = File(...),
     file_domain: str = Form(...),
     db: Session = Depends(get_db),

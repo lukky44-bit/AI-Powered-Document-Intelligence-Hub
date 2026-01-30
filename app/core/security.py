@@ -2,7 +2,7 @@ from passlib.context import CryptContext
 from datetime import datetime, timedelta
 from jose import jwt
 from app.core.config import settings
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
 
@@ -28,7 +28,7 @@ def create_access_token(data: dict):
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
-def get_current_user(token: str = Depends(oauth2_scheme)):
+def get_current_user(token: str = Depends(oauth2_scheme), request: Request = None):
     try:
         payload = jwt.decode(
             token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM]
@@ -38,7 +38,11 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         role = payload.get("role")
         if email is None or role is None:
             raise HTTPException(status_code=401, detail="Invalid token")
-        return {"email": email, "role": role}
+        user = {"email": email, "role": role}
+        if request:
+            request.state.user = user
+
+        return user
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Token verification failed"
