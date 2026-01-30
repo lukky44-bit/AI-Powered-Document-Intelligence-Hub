@@ -1,60 +1,121 @@
 from groq import Groq
-from app.services.embedding_service import similarity_search
 from app.core.config import settings
+from app.services.embedding_service import similarity_search
 
 client = Groq(api_key=settings.GROQ_API_KEY)
 
 
-def get_prompt_by_mode(mode: str, context: str, query: str):
-    if mode == "legal":
-        system = "You are a legal assistant. Answer using formal legal language and cite clauses if possible."
-    elif mode == "finance":
-        system = "You are a finance expert. Answer clearly with financial terminology and risk awareness."
-    elif mode == "academic":
-        system = "You are an academic research assistant. Use formal tone and structured explanations."
-    elif mode == "healthcare":
-        system = "You are a medical assistant. Answer carefully and add disclaimers where necessary."
-    elif mode == "business":
-        system = (
-            "You are a business analyst. Focus on actionable insights and summaries."
+def get_format_instruction(response_format: str):
+    if response_format == "markdown":
+        return (
+            "Return the answer strictly in Markdown format. "
+            "Use headings, bullet points, and emphasis where appropriate. "
+            "Do NOT include explanations outside the formatted content."
         )
 
-    else:
-        system = "You are an intelligent document assistant."
+    if response_format == "json":
+        return (
+            "Return the answer strictly as valid JSON. "
+            "Do NOT include any text outside the JSON object. "
+            "Do NOT add markdown fences. "
+            "Ensure keys are descriptive and values are concise."
+        )
+
+    if response_format == "table":
+        return (
+            "Return the answer strictly as a table. "
+            "Use a Markdown table with clear column headers. "
+            "Do NOT include explanations outside the table."
+        )
+
+    return "Return the answer as clear, concise plain text."
+
+
+def get_mode_instruction(mode: str):
+    if mode == "legal":
+        return (
+            "You are a legal assistant. "
+            "Use precise legal language. "
+            "Refer explicitly to clauses where possible. "
+            "Do not provide legal advice beyond the document content."
+        )
+
+    if mode == "finance":
+        return (
+            "You are a finance expert. "
+            "Use financial terminology accurately. "
+            "Avoid speculation or assumptions."
+        )
+
+    if mode == "academic":
+        return (
+            "You are an academic research assistant. "
+            "Use formal and structured language. "
+            "Base answers strictly on the provided content."
+        )
+
+    if mode == "healthcare":
+        return (
+            "You are a medical information assistant. "
+            "Use neutral, factual medical language. "
+            "Do NOT provide diagnosis or treatment advice. "
+            "Include a brief disclaimer if relevant."
+        )
+
+    if mode == "business":
+        return "You are a business analyst. Focus on actionable insights and summaries."
+
+    return "You are an intelligent document assistant."
+
+
+def generate_rag_answer(
+    query: str,
+    top_k: int = 3,
+    file_id: str = None,
+    mode: str = "general",
+    response_format: str = "text",
+):
+    # ---------- RETRIEVAL ----------
+    docs = similarity_search(query, top_k, file_id)
+
+    if not docs:
+        return "No relevant information found in the documents.", []
+
+    # ---------- CONTEXT ----------
+    context_blocks = []
+    for i, d in enumerate(docs):
+        context_blocks.append(f"[Source {i + 1}]\n{d['text']}")
+
+    context = "\n\n".join(context_blocks)
+
+    # ---------- PROMPTS ----------
+    system_prompt = (
+        f"{get_mode_instruction(mode)} "
+        "You must answer using ONLY the provided context. "
+        "If the answer is not present in the context, say "
+        "'The document does not contain this information.'"
+    )
 
     user_prompt = f"""
-Use the following context to answer the question.
-
 Context:
 {context}
 
 Question:
 {query}
 
-Answer clearly and only using the context.
+Response requirements:
+{get_format_instruction(response_format)}
 """
-    return system, user_prompt
 
-
-def generate_rag_answer(
-    query: str, top_k: int = 3, file_id: str = None, mode: str = "general"
-):
-    docs = similarity_search(query, top_k, file_id)
-
-    context = ""
-    for i, d in enumerate(docs):
-        context += f"Chunk {i + 1}:\n{d['text']}\n\n"
-
-    system_prompt, user_prompt = get_prompt_by_mode(mode, context, query)
-
+    # ---------- LLM CALL ----------
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        temperature=0.2,
+        temperature=0.1,
     )
 
-    answer = response.choices[0].message.content
+    answer = response.choices[0].message.content.strip()
     return answer, docs

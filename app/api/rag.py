@@ -13,7 +13,7 @@ router = APIRouter()
 
 
 @router.post("/answer")
-@limiter.limit("3/minute")
+@limiter.limit("10/minute")
 def rag_answer(
     request: Request,
     data: dict,
@@ -25,6 +25,7 @@ def rag_answer(
         top_k = data.get("top_k", 3)
         file_id = data.get("file_id")
         mode = data.get("mode", "general")
+        response_format = data.get("format", "")
 
         user_role = current_user["role"]
 
@@ -51,7 +52,7 @@ def rag_answer(
                 )
 
         # ---------- RAG GENERATION ----------
-        answer, docs = generate_rag_answer(query, top_k, file_id, mode)
+        answer, docs = generate_rag_answer(query, top_k, file_id, mode, response_format)
 
         # ---------- SOURCE ATTRIBUTION WITH DOMAIN CHECK ----------
         sources = []
