@@ -7,6 +7,7 @@ from app.api.transcription import router as transcription_router
 from app.api.embeddings import router as embeddings_router
 from app.api.search import router as search_router
 from app.api.rag import router as rag_router
+from app.api import admin
 
 
 def register_routes(app: FastAPI):
@@ -19,3 +20,4 @@ def register_routes(app: FastAPI):
     app.include_router(embeddings_router, prefix="/embeddings", tags=["Embeddings"])
     app.include_router(search_router, prefix="/search", tags=["Search"])
     app.include_router(rag_router, prefix="/rag", tags=["RAG"])
+    app.include_router(admin.router)

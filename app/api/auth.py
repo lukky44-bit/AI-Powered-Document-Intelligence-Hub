@@ -13,7 +13,7 @@ def signup(data: dict, db: Session = Depends(get_db)):
         username=data["username"],
         password=data["password"],
         email=data["email"],
-        role=data.get("role", "researcher"),
+        role="researcher",
     )
     return {"message": "User created Successfully", "Name": user.username}
 
