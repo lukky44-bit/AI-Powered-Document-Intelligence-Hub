@@ -127,10 +127,17 @@ uploaded_file = st.file_uploader(
     type=["pdf", "docx", "png", "jpg", "jpeg", "mp3", "wav"],
 )
 
-file_domain = st.selectbox(
-    "Select Document Domain",
-    ["legal", "healthcare", "finance", "academic", "business"],
-)
+# Admin chooses domain, others don't
+file_domain = None
+if user_role == "admin":
+    file_domain = st.selectbox(
+        "Select Document Domain",
+        ["legal", "healthcare", "finance", "academic", "business"],
+    )
+else:
+    st.info(
+        f"📌 Document domain will be set automatically based on your role ({user_role})"
+    )
 
 if st.button("Upload File") and uploaded_file:
     response = upload_file(
@@ -140,7 +147,7 @@ if st.button("Upload File") and uploaded_file:
     )
 
     if "file_id" in response:
-        st.success("File uploaded and indexed successfully")
+        st.success("File uploaded, processed and indexed successfully")
         st.session_state.last_file_id = response["file_id"]
     else:
         st.error(response.get("detail", "Upload failed"))

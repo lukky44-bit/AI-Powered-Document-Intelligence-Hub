@@ -12,5 +12,5 @@ ROLE_DOMAIN_MAP = {
     "researcher": ["academic"],
     "finance": ["finance"],
     "business": ["business"],
-    "admin": ["legal", "healthcare", "finance", "academic", "business"],
+    "admin": None,
 }
