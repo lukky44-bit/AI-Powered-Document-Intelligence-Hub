@@ -22,16 +22,17 @@ if "page" not in st.session_state:
     st.session_state.page = "login"
 
 
-# ---------------- JWT ROLE DECODE (UI ONLY) ----------------
-def get_role_from_token(token):
+# ---------------- JWT ROLES DECODE (UI ONLY) ----------------
+def get_roles_from_token(token):
     try:
         payload = token.split(".")[1]
         padded = payload + "=" * (-len(payload) % 4)
         decoded = base64.urlsafe_b64decode(padded)
         data = json.loads(decoded)
-        return data.get("role")
+        roles = data.get("roles", [])
+        return roles if isinstance(roles, list) else []
     except Exception:
-        return None
+        return []
 
 
 # ===================== LOGIN PAGE =====================
@@ -87,36 +88,41 @@ if st.session_state.page == "signup" and not st.session_state.token:
 
 
 # ===================== MAIN APP =====================
-user_role = get_role_from_token(st.session_state.token)
-st.sidebar.write(f"👤 Role: **{user_role}**")
+user_roles = get_roles_from_token(st.session_state.token)
+st.sidebar.write(f"👤 Roles: **{', '.join(user_roles)}**")
 
 
 # ===================== ADMIN PANEL =====================
-if user_role == "admin":
+if "admin" in user_roles:
     st.sidebar.divider()
     st.sidebar.title("🛠 Admin Panel")
-    st.sidebar.subheader("Update User Role")
+    st.sidebar.subheader("Update User Roles")
 
     admin_email = st.sidebar.text_input("User Email")
-    new_role = st.sidebar.selectbox(
-        "New Role",
+    new_roles = st.sidebar.multiselect(
+        "Assign Roles (select multiple)",
         ["researcher", "doctor", "lawyer", "finance", "business", "admin"],
+        default=["researcher"],
     )
 
-    if st.sidebar.button("Update Role"):
+    if st.sidebar.button("Update Roles"):
         if not admin_email:
             st.sidebar.error("Email is required")
+        elif not new_roles:
+            st.sidebar.error("At least one role must be selected")
         else:
             response = update_user_role(
                 st.session_state.token,
                 admin_email,
-                new_role,
+                new_roles,
             )
 
-            if "new_role" in response:
-                st.sidebar.success(f"{response['email']} → {response['new_role']}")
+            if "roles" in response:
+                st.sidebar.success(
+                    f"{response['email']} → {', '.join(response['roles'])}"
+                )
             else:
-                st.sidebar.error(response.get("detail", "Failed to update role"))
+                st.sidebar.error(response.get("detail", "Failed to update roles"))
 
 
 # ===================== FILE UPLOAD =====================
@@ -129,14 +135,14 @@ uploaded_file = st.file_uploader(
 
 # Admin chooses domain, others don't
 file_domain = None
-if user_role == "admin":
+if "admin" in user_roles:
     file_domain = st.selectbox(
         "Select Document Domain",
         ["legal", "healthcare", "finance", "academic", "business"],
     )
 else:
     st.info(
-        f"📌 Document domain will be set automatically based on your role ({user_role})"
+        f"📌 Document domain will be set automatically based on your roles ({', '.join(user_roles)})"
     )
 
 if st.button("Upload File") and uploaded_file:

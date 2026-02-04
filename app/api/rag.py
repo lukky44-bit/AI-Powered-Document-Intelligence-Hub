@@ -5,7 +5,7 @@ from app.services.rag_service import generate_rag_answer
 from app.services.file_metadata_service import get_file_by_file_id
 from app.db.session import get_db
 from app.core.security import get_current_user
-from app.core.rbac import ROLE_MODE_MAP, ROLE_DOMAIN_MAP
+from app.core.rbac import can_access_mode, can_access_domain, has_admin_role
 from app.core.rate_limiter import limiter
 from fastapi import Request
 
@@ -27,14 +27,13 @@ def rag_answer(
         mode = data.get("mode", "general")
         response_format = data.get("format", "")
 
-        user_role = current_user["role"]
+        user_roles = current_user["roles"]
 
         # ---------- MODE RBAC ----------
-        allowed_modes = ROLE_MODE_MAP.get(user_role, [])
-        if user_role != "admin" and mode not in allowed_modes:
+        if not has_admin_role(user_roles) and not can_access_mode(user_roles, mode):
             raise HTTPException(
                 status_code=403,
-                detail=f"Role '{user_role}' is not allowed to use '{mode}' mode",
+                detail=f"Your roles do not allow access to '{mode}' mode",
             )
 
         # ---------- DOMAIN RBAC ----------
@@ -44,11 +43,10 @@ def rag_answer(
             if not file_record:
                 raise HTTPException(status_code=404, detail="File not found")
 
-            allowed_domains = ROLE_DOMAIN_MAP.get(user_role, [])
-            if user_role != "admin" and file_record.domain not in allowed_domains:
+            if not has_admin_role(user_roles) and not can_access_domain(user_roles, file_record.domain):
                 raise HTTPException(
                     status_code=403,
-                    detail=f"Role '{user_role}' is not allowed to access '{file_record.domain}' documents",
+                    detail=f"Your roles do not allow access to '{file_record.domain}' documents",
                 )
 
         # ---------- RAG GENERATION ----------
@@ -65,8 +63,7 @@ def rag_answer(
                 continue
 
             # Enforce domain RBAC again for safety
-            allowed_domains = ROLE_DOMAIN_MAP.get(user_role, [])
-            if user_role != "admin" and file_record.domain not in allowed_domains:
+            if not has_admin_role(user_roles) and not can_access_domain(user_roles, file_record.domain):
                 continue
 
             sources.append(
@@ -88,7 +85,7 @@ def rag_answer(
         return {
             "query": query,
             "mode": mode,
-            "role": user_role,
+            "roles": user_roles,
             "answer": answer,
             "sources": sources,
             "user": current_user["email"],

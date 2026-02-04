@@ -28,7 +28,7 @@ def rag_query(token, payload):
     return res.json()
 
 
-def update_user_role(token, email, new_role):
+def update_user_role(token, email, new_roles):
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
@@ -36,11 +36,11 @@ def update_user_role(token, email, new_role):
 
     payload = {
         "email": email,
-        "new_role": new_role,
+        "roles": new_roles,
     }
 
     res = requests.put(
-        f"{BASE_URL}/admin/users/role",
+        f"{BASE_URL}/admin/users/roles",
         headers=headers,
         json=payload,
     )

@@ -12,7 +12,7 @@ from app.services.file_cleanup_service import delete_uploaded_file
 
 from app.db.session import get_db
 from app.core.security import get_current_user
-from app.core.rbac import ROLE_DOMAIN_MAP
+from app.core.rbac import get_allowed_domains, has_admin_role
 from app.core.rate_limiter import limiter
 
 router = APIRouter()
@@ -27,10 +27,10 @@ async def upload_file(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    user_role = current_user["role"]
+    user_roles = current_user["roles"]
 
     # ---------- DOMAIN DECISION ----------
-    if user_role == "admin":
+    if has_admin_role(user_roles):
         if not file_domain:
             raise HTTPException(
                 status_code=400,
@@ -38,13 +38,17 @@ async def upload_file(
             )
         final_domain = file_domain
     else:
-        domain_list = ROLE_DOMAIN_MAP.get(user_role)
-        if not domain_list:
+        allowed_domains = get_allowed_domains(user_roles)
+        if not allowed_domains:
             raise HTTPException(
                 status_code=400,
-                detail="Invalid role for file upload",
+                detail="No valid domains for your roles",
             )
-        final_domain = domain_list[0]
+        # Use provided domain if valid, otherwise use first allowed domain
+        if file_domain and file_domain in allowed_domains:
+            final_domain = file_domain
+        else:
+            final_domain = allowed_domains[0]
 
     # ---------- SAVE FILE ----------
     data = save_file(file)

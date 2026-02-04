@@ -35,10 +35,10 @@ def get_current_user(token: str = Depends(oauth2_scheme), request: Request = Non
         )
 
         email = payload.get("sub")
-        role = payload.get("role")
-        if email is None or role is None:
+        roles = payload.get("roles", [])
+        if email is None or roles is None:
             raise HTTPException(status_code=401, detail="Invalid token")
-        user = {"email": email, "role": role}
+        user = {"email": email, "roles": roles}
         if request:
             request.state.user = user
 

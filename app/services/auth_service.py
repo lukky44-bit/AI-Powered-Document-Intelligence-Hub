@@ -12,7 +12,7 @@ def create_user(
         username=username,
         email=email,
         hashed_password=hash_password(password_str),
-        role=role,
+        roles=["researcher"],
     )
     db.add(user)
     db.commit()
@@ -34,5 +34,5 @@ def login_user(db: Session, email: str, password: str):
     user = authenticate_user(db, email, password)
     if not user:
         return None
-    token = create_access_token({"sub": user.email, "role": user.role})
+    token = create_access_token({"sub": user.email, "roles": user.roles})
     return token
