@@ -19,7 +19,7 @@ router = APIRouter()
 
 
 @router.post("/file")
-@limiter.limit("2/minute")
+@limiter.limit("5/minute")
 async def upload_file(
     request: Request,
     file: UploadFile = File(...),

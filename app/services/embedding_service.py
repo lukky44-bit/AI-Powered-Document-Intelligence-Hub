@@ -18,7 +18,7 @@ def get_vector_store():
 
 
 def chunk_text(text: str):
-    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
+    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     return splitter.split_text(text)
 
 
@@ -49,7 +49,7 @@ def store_text(text: str, doc_id: str):
     }
 
 
-def similarity_search(query: str, top_k: int = 3, file_id: str = None):
+def similarity_search(query: str, top_k: int = 10, file_id: str = None):
     vectorstore = get_vector_store()
     if not vectorstore:
         raise ValueError("Vector store is empty. Store documents first.")

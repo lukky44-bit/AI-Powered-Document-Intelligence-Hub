@@ -25,10 +25,12 @@ if "page" not in st.session_state:
 # ---------------- JWT ROLES DECODE (UI ONLY) ----------------
 def get_roles_from_token(token):
     try:
+        # Decodes the middle part of the JWT (the payload)
         payload = token.split(".")[1]
         padded = payload + "=" * (-len(payload) % 4)
         decoded = base64.urlsafe_b64decode(padded)
         data = json.loads(decoded)
+        # JSONB roles come in as a list
         roles = data.get("roles", [])
         return roles if isinstance(roles, list) else []
     except Exception:
@@ -125,12 +127,14 @@ if "admin" in user_roles:
                 st.sidebar.error(response.get("detail", "Failed to update roles"))
 
 
-# ===================== FILE UPLOAD =====================
-st.subheader("📤 Upload Document")
+# ===================== FILE UPLOAD (MULTIPLE) =====================
+st.subheader("📤 Upload Documents")
 
-uploaded_file = st.file_uploader(
+# accept_multiple_files=True allows selecting multiple medical reports at once
+uploaded_files = st.file_uploader(
     "Upload PDF / DOCX / Image / Audio",
     type=["pdf", "docx", "png", "jpg", "jpeg", "mp3", "wav"],
+    accept_multiple_files=True,
 )
 
 # Admin chooses domain, others don't
@@ -145,18 +149,33 @@ else:
         f"📌 Document domain will be set automatically based on your roles ({', '.join(user_roles)})"
     )
 
-if st.button("Upload File") and uploaded_file:
-    response = upload_file(
-        st.session_state.token,
-        uploaded_file,
-        file_domain,
-    )
+if st.button("Upload Files") and uploaded_files:
+    progress_bar = st.progress(0)
+    total_files = len(uploaded_files)
+    success_count = 0
 
-    if "file_id" in response:
-        st.success("File uploaded, processed and indexed successfully")
-        st.session_state.last_file_id = response["file_id"]
-    else:
-        st.error(response.get("detail", "Upload failed"))
+    for index, file in enumerate(uploaded_files):
+        st.write(f"⏳ Processing: **{file.name}**...")
+
+        response = upload_file(
+            st.session_state.token,
+            file,
+            file_domain,
+        )
+
+        if "file_id" in response:
+            success_count += 1
+            st.toast(f"✅ {file.name} indexed!")
+        else:
+            st.error(
+                f"❌ {file.name} failed: {response.get('detail', 'Upload failed')}"
+            )
+
+        # Update visual progress bar
+        progress_bar.progress((index + 1) / total_files)
+
+    if success_count > 0:
+        st.success(f"Successfully processed {success_count}/{total_files} documents.")
 
 
 # ===================== RAG QUERY =====================
@@ -202,6 +221,7 @@ if st.button("Ask"):
 
         st.subheader("📚 Sources")
         for src in response["sources"]:
+            # Display source filename so you know which patient the info came from
             with st.expander(f"{src['filename']} (chunk {src['chunk_id']})"):
                 st.write(src["text"])
     else:
