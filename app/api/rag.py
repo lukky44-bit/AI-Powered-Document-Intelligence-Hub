@@ -1,13 +1,15 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.services.rag_service import generate_rag_answer
-from app.services.file_metadata_service import get_file_by_file_id
+from app.services.file_metadata_service import (
+    get_file_by_filename,
+    get_file_by_file_id,
+)
 from app.db.session import get_db
 from app.core.security import get_current_user
 from app.core.rbac import can_access_mode, can_access_domain, has_admin_role
 from app.core.rate_limiter import limiter
-from fastapi import Request
 
 router = APIRouter()
 
@@ -21,13 +23,16 @@ def rag_answer(
     current_user: dict = Depends(get_current_user),
 ):
     try:
+        # ---------- INPUT ----------
         query = data["query"]
         top_k = data.get("top_k", 3)
+        filename = data.get("filename")
         file_id = data.get("file_id")
         mode = data.get("mode", "general")
         response_format = data.get("format", "")
 
         user_roles = current_user["roles"]
+        user_email = current_user["email"]
 
         # ---------- MODE RBAC ----------
         if not has_admin_role(user_roles) and not can_access_mode(user_roles, mode):
@@ -36,45 +41,64 @@ def rag_answer(
                 detail=f"Your roles do not allow access to '{mode}' mode",
             )
 
-        # ---------- DOMAIN RBAC ----------
-        # If a specific file is requested, check its domain
-        if file_id:
+        # ---------- FILENAME / FILE_ID RESOLUTION ----------
+        file_record = None
+
+        if filename:
+            file_record = get_file_by_filename(db, filename)
+            if not file_record:
+                raise HTTPException(status_code=404, detail="File not found")
+
+        elif file_id:
             file_record = get_file_by_file_id(db, file_id)
             if not file_record:
                 raise HTTPException(status_code=404, detail="File not found")
 
-            if not has_admin_role(user_roles) and not can_access_domain(
-                user_roles, file_record.domain
+        # ---------- DOMAIN + OWNERSHIP RBAC ----------
+        if file_record:
+            if (
+                not has_admin_role(user_roles)
+                and file_record.uploaded_by != user_email
+                and not can_access_domain(user_roles, file_record.domain)
             ):
                 raise HTTPException(
                     status_code=403,
-                    detail=f"Your roles do not allow access to '{file_record.domain}' documents",
+                    detail="You are not allowed to access this file",
                 )
 
-        # ---------- RAG GENERATION ----------
-        answer, docs = generate_rag_answer(query, top_k, file_id, mode, response_format)
+            # enforce file scoping
+            file_id = file_record.file_id
 
-        # ---------- SOURCE ATTRIBUTION WITH DOMAIN CHECK ----------
+        # ---------- RAG GENERATION ----------
+        answer, docs = generate_rag_answer(
+            query=query,
+            top_k=top_k,
+            file_id=file_id,
+            mode=mode,
+            response_format=response_format,
+        )
+
+        # ---------- SOURCE ATTRIBUTION + SAFETY ----------
         sources = []
+
         for d in docs:
             fid = d["metadata"]["doc_id"]
             chunk_id = d["metadata"]["chunk_id"]
 
-            file_record = get_file_by_file_id(db, fid)
-            if not file_record:
+            file = get_file_by_file_id(db, fid)
+            if not file:
                 continue
 
-            # Enforce domain RBAC again for safety
             if not has_admin_role(user_roles) and not can_access_domain(
-                user_roles, file_record.domain
+                user_roles, file.domain
             ):
                 continue
 
             sources.append(
                 {
                     "file_id": fid,
-                    "filename": file_record.filename,
-                    "domain": file_record.domain,
+                    "filename": file.filename,
+                    "domain": file.domain,
                     "chunk_id": chunk_id,
                     "text": d["text"],
                 }
@@ -83,7 +107,7 @@ def rag_answer(
         if not sources:
             raise HTTPException(
                 status_code=403,
-                detail="No accessible sources found ",
+                detail="No accessible sources found",
             )
 
         return {
@@ -92,7 +116,7 @@ def rag_answer(
             "roles": user_roles,
             "answer": answer,
             "sources": sources,
-            "user": current_user["email"],
+            "user": user_email,
         }
 
     except HTTPException:

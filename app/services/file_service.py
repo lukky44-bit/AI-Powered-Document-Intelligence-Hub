@@ -7,7 +7,7 @@ def save_file(file):
     os.makedirs(settings.DOCS_DIR, exist_ok=True)
 
     file_id = str(uuid.uuid4())
-    filename = f"{file_id}_{file.filename}"
+    filename = f"{file.filename}"
     file_path = os.path.join(settings.DOCS_DIR, filename)
 
     with open(file_path, "wb") as f:

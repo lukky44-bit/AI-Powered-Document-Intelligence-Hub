@@ -23,3 +23,7 @@ def save_file_metadata(db: Session, file_id, filename, path, uploaded_by, domain
 
 def get_file_by_file_id(db: Session, file_id: str):
     return db.query(File).filter(File.file_id == file_id).first()
+
+
+def get_file_by_filename(db: Session, filename: str):
+    return db.query(File).filter(File.filename == filename).first()
