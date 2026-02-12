@@ -43,7 +43,9 @@ def rag_answer(
             if not file_record:
                 raise HTTPException(status_code=404, detail="File not found")
 
-            if not has_admin_role(user_roles) and not can_access_domain(user_roles, file_record.domain):
+            if not has_admin_role(user_roles) and not can_access_domain(
+                user_roles, file_record.domain
+            ):
                 raise HTTPException(
                     status_code=403,
                     detail=f"Your roles do not allow access to '{file_record.domain}' documents",
@@ -63,7 +65,9 @@ def rag_answer(
                 continue
 
             # Enforce domain RBAC again for safety
-            if not has_admin_role(user_roles) and not can_access_domain(user_roles, file_record.domain):
+            if not has_admin_role(user_roles) and not can_access_domain(
+                user_roles, file_record.domain
+            ):
                 continue
 
             sources.append(
@@ -79,7 +83,7 @@ def rag_answer(
         if not sources:
             raise HTTPException(
                 status_code=403,
-                detail="No accessible sources found for your role",
+                detail="No accessible sources found ",
             )
 
         return {

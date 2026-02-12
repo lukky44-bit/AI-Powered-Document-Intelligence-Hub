@@ -66,3 +66,12 @@ def similarity_search(query: str, top_k: int = 10, file_id: str = None):
         formatted.append({"text": doc.page_content, "metadata": doc.metadata})
 
     return formatted
+
+
+def delete_file_embeddings(file_id: str):
+    """
+    Deletes all vector chunks belonging to a file
+    """
+    vectorstore = get_vector_store()
+    if vectorstore:
+        vectorstore.delete(where={"file_id": file_id})
