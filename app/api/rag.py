@@ -89,6 +89,7 @@ def rag_answer(
             if not file:
                 continue
 
+            # Skip files the user doesn't have access to
             if not has_admin_role(user_roles) and not can_access_domain(
                 user_roles, file.domain
             ):
@@ -104,11 +105,16 @@ def rag_answer(
                 }
             )
 
+        # If no accessible sources found, return a helpful message instead of error
         if not sources:
-            raise HTTPException(
-                status_code=403,
-                detail="No accessible sources found",
-            )
+            return {
+                "query": query,
+                "mode": mode,
+                "roles": user_roles,
+                "answer": "No accessible documents found for your query. This could mean: (1) No documents match your search, (2) The relevant documents belong to domains you don't have access to, or (3) No files have been uploaded yet.",
+                "sources": [],
+                "user": user_email,
+            }
 
         return {
             "query": query,

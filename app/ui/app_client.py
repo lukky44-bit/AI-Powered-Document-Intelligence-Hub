@@ -53,3 +53,15 @@ def signup(username, email, password):
         json={"username": username, "email": email, "password": password},
     )
     return res.json()
+
+
+def get_my_files(token):
+    headers = {"Authorization": f"Bearer {token}"}
+    r = requests.get(f"{BASE_URL}/files/my", headers=headers)
+    return r.json()
+
+
+def delete_file(token, file_id):
+    headers = {"Authorization": f"Bearer {token}"}
+    r = requests.delete(f"{BASE_URL}/files/{file_id}", headers=headers)
+    return r.json()

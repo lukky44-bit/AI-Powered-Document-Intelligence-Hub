@@ -70,7 +70,7 @@ def get_mode_instruction(mode: str):
 
 def generate_rag_answer(
     query: str,
-    top_k: int = 10,
+    top_k: int = 15,
     file_id: str = None,
     mode: str = "general",
     response_format: str = "text",

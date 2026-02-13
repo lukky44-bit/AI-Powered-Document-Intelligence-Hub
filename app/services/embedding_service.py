@@ -49,7 +49,7 @@ def store_text(text: str, doc_id: str):
     }
 
 
-def similarity_search(query: str, top_k: int = 10, file_id: str = None):
+def similarity_search(query: str, top_k: int = 15, file_id: str = None):
     vectorstore = get_vector_store()
     if not vectorstore:
         raise ValueError("Vector store is empty. Store documents first.")
@@ -73,5 +73,4 @@ def delete_file_embeddings(file_id: str):
     Deletes all vector chunks belonging to a file
     """
     vectorstore = get_vector_store()
-    if vectorstore:
-        vectorstore.delete(where={"file_id": file_id})
+    vectorstore.delete(where={"doc_id": file_id})

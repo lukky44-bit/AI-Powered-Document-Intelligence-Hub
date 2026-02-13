@@ -8,6 +8,8 @@ from app_client import (
     upload_file,
     rag_query,
     update_user_role,
+    get_my_files,
+    delete_file,
 )
 
 # ---------------- PAGE CONFIG ----------------
@@ -25,12 +27,10 @@ if "page" not in st.session_state:
 # ---------------- JWT ROLES DECODE (UI ONLY) ----------------
 def get_roles_from_token(token):
     try:
-        # Decodes the middle part of the JWT (the payload)
         payload = token.split(".")[1]
         padded = payload + "=" * (-len(payload) % 4)
         decoded = base64.urlsafe_b64decode(padded)
         data = json.loads(decoded)
-        # JSONB roles come in as a list
         roles = data.get("roles", [])
         return roles if isinstance(roles, list) else []
     except Exception:
@@ -55,7 +55,6 @@ if st.session_state.page == "login" and not st.session_state.token:
             st.error(response.get("detail", "Login failed"))
 
     st.markdown("---")
-
     if st.button("New user? Sign up"):
         st.session_state.page = "signup"
         st.rerun()
@@ -81,7 +80,6 @@ if st.session_state.page == "signup" and not st.session_state.token:
             st.error(response.get("detail", "Signup failed"))
 
     st.markdown("---")
-
     if st.button("Back to Login"):
         st.session_state.page = "login"
         st.rerun()
@@ -98,46 +96,57 @@ st.sidebar.write(f"👤 Roles: **{', '.join(user_roles)}**")
 if "admin" in user_roles:
     st.sidebar.divider()
     st.sidebar.title("🛠 Admin Panel")
-    st.sidebar.subheader("Update User Roles")
 
     admin_email = st.sidebar.text_input("User Email")
     new_roles = st.sidebar.multiselect(
-        "Assign Roles (select multiple)",
+        "Assign Roles",
         ["researcher", "doctor", "lawyer", "finance", "business", "admin"],
         default=["researcher"],
     )
 
     if st.sidebar.button("Update Roles"):
-        if not admin_email:
-            st.sidebar.error("Email is required")
-        elif not new_roles:
-            st.sidebar.error("At least one role must be selected")
+        response = update_user_role(
+            st.session_state.token,
+            admin_email,
+            new_roles,
+        )
+        if "roles" in response:
+            st.sidebar.success(f"{response['email']} → {', '.join(response['roles'])}")
         else:
-            response = update_user_role(
-                st.session_state.token,
-                admin_email,
-                new_roles,
-            )
+            st.sidebar.error(response.get("detail", "Failed to update roles"))
 
-            if "roles" in response:
-                st.sidebar.success(
-                    f"{response['email']} → {', '.join(response['roles'])}"
-                )
+
+# ===================== SIDEBAR: MY FILES =====================
+st.sidebar.divider()
+st.sidebar.title("📂 My Files")
+
+files_response = get_my_files(st.session_state.token)
+files = files_response.get("files", [])
+
+if not files:
+    st.sidebar.info("No files uploaded yet.")
+else:
+    for f in files:
+        col1, col2 = st.sidebar.columns([4, 1])
+        col1.write(f"📄 {f['filename']}")
+        if col2.button("🗑", key=f"del_{f['file_id']}"):
+            resp = delete_file(st.session_state.token, f["file_id"])
+            if "message" in resp:
+                st.sidebar.success("Deleted")
+                st.rerun()
             else:
-                st.sidebar.error(response.get("detail", "Failed to update roles"))
+                st.sidebar.error(resp.get("detail", "Delete failed"))
 
 
-# ===================== FILE UPLOAD (MULTIPLE) =====================
+# ===================== FILE UPLOAD =====================
 st.subheader("📤 Upload Documents")
 
-# accept_multiple_files=True allows selecting multiple medical reports at once
 uploaded_files = st.file_uploader(
     "Upload PDF / DOCX / Image / Audio",
     type=["pdf", "docx", "png", "jpg", "jpeg", "mp3", "wav"],
     accept_multiple_files=True,
 )
 
-# Admin chooses domain, others don't
 file_domain = None
 if "admin" in user_roles:
     file_domain = st.selectbox(
@@ -145,37 +154,31 @@ if "admin" in user_roles:
         ["legal", "healthcare", "finance", "academic", "business"],
     )
 else:
-    st.info(
-        f"📌 Document domain will be set automatically based on your roles ({', '.join(user_roles)})"
-    )
+    st.info("📌 Domain is assigned automatically based on your roles")
 
 if st.button("Upload Files") and uploaded_files:
-    progress_bar = st.progress(0)
-    total_files = len(uploaded_files)
-    success_count = 0
+    progress = st.progress(0)
+    success = False
 
-    for index, file in enumerate(uploaded_files):
-        st.write(f"⏳ Processing: **{file.name}**...")
-
+    for i, f in enumerate(uploaded_files):
         response = upload_file(
             st.session_state.token,
-            file,
+            f,
             file_domain,
         )
 
         if "file_id" in response:
-            success_count += 1
-            st.toast(f"✅ {file.name} indexed!")
+            st.toast(f"✅ {f.name} uploaded")
+            success = True
         else:
-            st.error(
-                f"❌ {file.name} failed: {response.get('detail', 'Upload failed')}"
-            )
+            st.error(f"❌ {f.name}: {response.get('detail')}")
 
-        # Update visual progress bar
-        progress_bar.progress((index + 1) / total_files)
+        progress.progress((i + 1) / len(uploaded_files))
 
-    if success_count > 0:
-        st.success(f"Successfully processed {success_count}/{total_files} documents.")
+    # 🔥 IMPORTANT: refresh sidebar file list
+    if success:
+        st.success("Upload complete")
+        st.rerun()
 
 
 # ===================== RAG QUERY =====================
@@ -193,11 +196,15 @@ format_type = st.selectbox(
     ["text", "markdown", "json", "table"],
 )
 
-use_specific_file = st.checkbox("Query specific file")
+# -------- SIMPLE FILE OPTION --------
+use_filename = st.radio(
+    "Restrict context to a specific file?",
+    ["No", "Yes"],
+)
 
-file_id = None
-if use_specific_file:
-    file_id = st.text_input("Enter file_id")
+filename = None
+if use_filename == "Yes":
+    filename = st.text_input("Enter filename (exact match)")
 
 if st.button("Ask"):
     payload = {
@@ -206,8 +213,11 @@ if st.button("Ask"):
         "format": format_type,
     }
 
-    if file_id:
-        payload["file_id"] = file_id
+    if use_filename == "Yes":
+        if not filename:
+            st.error("Please enter a filename")
+            st.stop()
+        payload["filename"] = filename
 
     response = rag_query(st.session_state.token, payload)
 
@@ -221,7 +231,6 @@ if st.button("Ask"):
 
         st.subheader("📚 Sources")
         for src in response["sources"]:
-            # Display source filename so you know which patient the info came from
             with st.expander(f"{src['filename']} (chunk {src['chunk_id']})"):
                 st.write(src["text"])
     else:
