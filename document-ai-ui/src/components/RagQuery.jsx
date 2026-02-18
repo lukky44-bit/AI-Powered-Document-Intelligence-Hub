@@ -1,22 +1,24 @@
 import { useState } from "react";
+import ReactMarkdown from "react-markdown";
 
 export default function RagQuery({ selectedFile }) {
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState("general");
+  const [responseFormat, setResponseFormat] = useState("text");
   const [answer, setAnswer] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const token = localStorage.getItem("token");
 
   const handleAsk = async () => {
     if (!query.trim()) return;
 
-    const token = localStorage.getItem("token");
-
     const bodyData = {
-      query: query,
-      mode: mode,
+      query,
+      mode,
+      format: responseFormat,
     };
 
-    // Include file_id only if user selected a file
     if (selectedFile) {
       bodyData.file_id = selectedFile;
     }
@@ -25,14 +27,17 @@ export default function RagQuery({ selectedFile }) {
       setLoading(true);
       setAnswer("");
 
-      const response = await fetch("http://localhost:8000/rag/answer", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(bodyData),
-      });
+      const response = await fetch(
+        "http://localhost:8000/rag/answer",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(bodyData),
+        }
+      );
 
       const data = await response.json();
 
@@ -41,7 +46,7 @@ export default function RagQuery({ selectedFile }) {
       } else {
         setAnswer("Error: " + data.detail);
       }
-    } catch (error) {
+    } catch {
       setAnswer("Server error");
     } finally {
       setLoading(false);
@@ -52,13 +57,12 @@ export default function RagQuery({ selectedFile }) {
     <div>
       <h3>💬 Ask a Question</h3>
 
-      {/* Mode Selector */}
-      <div style={{ marginBottom: "10px" }}>
-        <label style={{ marginRight: "10px" }}>Mode:</label>
+      {/* Mode */}
+      <div style={{ marginBottom: "8px" }}>
+        <label>Mode: </label>
         <select
           value={mode}
           onChange={(e) => setMode(e.target.value)}
-          style={{ padding: "6px" }}
         >
           <option value="general">General</option>
           <option value="legal">Legal</option>
@@ -69,24 +73,49 @@ export default function RagQuery({ selectedFile }) {
         </select>
       </div>
 
-      {/* Query Input */}
+      {/* Response Format */}
+      <div style={{ marginBottom: "8px" }}>
+        <label>Response Format: </label>
+        <select
+          value={responseFormat}
+          onChange={(e) => setResponseFormat(e.target.value)}
+        >
+          <option value="text">Text</option>
+          <option value="markdown">Markdown</option>
+          <option value="json">JSON</option>
+          <option value="table">Table</option>
+        </select>
+      </div>
+
+      {/* Query */}
       <input
         type="text"
-        placeholder="Ask something..."
         value={query}
         onChange={(e) => setQuery(e.target.value)}
+        placeholder="Ask something..."
         style={{ width: "60%", padding: "6px" }}
       />
 
-      <button onClick={handleAsk} style={{ marginLeft: "10px" }}>
+      <button
+        onClick={handleAsk}
+        style={{ marginLeft: "10px" }}
+      >
         {loading ? "Thinking..." : "Ask"}
       </button>
 
-      {/* Answer Section */}
+      {/* Render Answer */}
       {answer && (
         <div style={{ marginTop: "20px" }}>
           <strong>Answer:</strong>
-          <p>{answer}</p>
+
+          {responseFormat === "markdown" ||
+          responseFormat === "table" ? (
+            <ReactMarkdown>{answer}</ReactMarkdown>
+          ) : responseFormat === "json" ? (
+            <pre>{JSON.stringify(JSON.parse(answer), null, 2)}</pre>
+          ) : (
+            <p>{answer}</p>
+          )}
         </div>
       )}
     </div>
