@@ -34,8 +34,8 @@ services:
   streamlit-ui:
     image: lakshand44/rag-streamlit:latest
     build:
-      context: .
-      dockerfile: ui/dockerfile
+      context: ./ui
+      dockerfile: dockerfile
     container_name: rag_streamlit
     restart: always
     depends_on:
