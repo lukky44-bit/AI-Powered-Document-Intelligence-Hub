@@ -20,7 +20,7 @@ jobs:
 
       - name: Install Backend Dependencies
         run: |
-          pip install -r backend/requirements.txt
+          pip install -r app/requirements.txt
 
       - name: Run Ruff Lint
         run: |
