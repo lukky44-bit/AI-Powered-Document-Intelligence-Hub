@@ -1,0 +1,59 @@
+services:
+
+  db:
+    image: postgres:15
+    container_name: rag_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: rag_metadata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  backend:
+    image: lakshand44/rag-backend:latest
+    build:
+      context: ./app
+      dockerfile: dockerfile
+    container_name: rag_backend
+    restart: always
+    depends_on:
+      - db
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/rag_metadata
+    ports:
+      - "8000:8000"
+    volumes:
+    - ./data:/app/data
+
+  streamlit-ui:
+    image: lakshand44/rag-streamlit:latest
+    build:
+      context: .
+      dockerfile: ui/dockerfile
+    container_name: rag_streamlit
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "8501:8501"
+
+  react-ui:
+    image: lakshand44/rag-react:latest
+    build:
+      context: ./document-ai-ui
+      dockerfile: dockerfile
+    container_name: rag_react
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+
+volumes:
+  postgres_data:

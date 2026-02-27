@@ -188,7 +188,7 @@ query = st.text_input("Your question")
 
 mode = st.selectbox(
     "Select Mode",
-    ["general", "legal", "healthcare", "finance", "academic", "business"],
+    ["legal", "healthcare", "finance", "academic", "business"],
 )
 
 format_type = st.selectbox(
