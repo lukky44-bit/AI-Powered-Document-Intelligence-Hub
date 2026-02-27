@@ -24,7 +24,7 @@ jobs:
 
       - name: Run Ruff Lint
         run: |
-          ruff backend/
+          ruff app/
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
@@ -33,7 +33,7 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build Backend Image
-        run: docker build -t lakshand44/rag-backend:latest ./backend
+        run: docker build -t lakshand44/rag-backend:latest ./app
 
       - name: Build Streamlit Image
         run: docker build -t lakshand44/rag-streamlit:latest ./ui
