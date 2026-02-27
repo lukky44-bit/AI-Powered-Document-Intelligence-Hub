@@ -1,6 +1,5 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import NullPool
 from app.core.config import settings
 
 # Configure engine with proper settings for concurrent writes

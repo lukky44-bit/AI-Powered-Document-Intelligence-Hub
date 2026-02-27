@@ -107,11 +107,17 @@ def rag_answer(
 
         # If no accessible sources found, return a helpful message instead of error
         if not sources:
+            answer_msg = (
+                "No accessible documents found for your query. This could mean: "
+                "(1) No documents match your search, (2) The relevant documents "
+                "belong to domains you don't have access to, or (3) No files "
+                "have been uploaded yet."
+            )
             return {
                 "query": query,
                 "mode": mode,
                 "roles": user_roles,
-                "answer": "No accessible documents found for your query. This could mean: (1) No documents match your search, (2) The relevant documents belong to domains you don't have access to, or (3) No files have been uploaded yet.",
+                "answer": answer_msg,
                 "sources": [],
                 "user": user_email,
             }

@@ -29,7 +29,10 @@ def get_allowed_modes(roles: list[str]) -> list[str]:
 
 
 def get_allowed_domains(roles: list[str]) -> list[str] | None:
-    """Get all allowed domains for a list of roles. Returns None for admin (all access)."""
+    """Get all allowed domains for a list of roles.
+
+    Returns None for admin (all access).
+    """
     if "admin" in roles:
         return None  # Admin has access to all domains
 

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
-from app.services.embedding_service import similarity_search
+from app.services.embedding_service import similarity_search as search_embeddings
 from app.services.file_metadata_service import get_file_by_file_id
 from app.db.session import get_db
 from app.core.security import get_current_user
@@ -31,12 +31,16 @@ def similarity_search(
             if not has_admin_role(user_roles) and not can_access_domain(
                 user_roles, file_record.domain
             ):
+                detail_msg = (
+                    f"Your roles do not allow access to '{file_record.domain}' "
+                    "documents"
+                )
                 raise HTTPException(
                     status_code=403,
-                    detail=f"Your roles do not allow access to '{file_record.domain}' documents",
+                    detail=detail_msg,
                 )
 
-        result = similarity_search(query, top_k, file_id)
+        result = search_embeddings(query, top_k, file_id)
         return {"results": result, "file_id": file_id, "user": current_user["email"]}
     except HTTPException:
         raise
