@@ -21,3 +21,4 @@ langchain-chroma==1.1.0
 langchain-core==1.2.7
 langchain-text-splitters==1.1.0
 sentence-transformers==5.2.0
+ruff==0.0.241
