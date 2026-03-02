@@ -5,6 +5,9 @@ from app.services.embedding_service import similarity_search
 client = Groq(api_key=settings.GROQ_API_KEY)
 
 
+# ---------------------------------------------------------
+# FORMAT INSTRUCTIONS
+# ---------------------------------------------------------
 def get_format_instruction(response_format: str):
     if response_format == "markdown":
         return (
@@ -31,6 +34,9 @@ def get_format_instruction(response_format: str):
     return "Return the answer as clear, concise plain text."
 
 
+# ---------------------------------------------------------
+# MODE INSTRUCTIONS
+# ---------------------------------------------------------
 def get_mode_instruction(mode: str):
     if mode == "legal":
         return (
@@ -68,27 +74,34 @@ def get_mode_instruction(mode: str):
     return "You are an intelligent document assistant."
 
 
+# ---------------------------------------------------------
+# CONVERSATIONAL RAG FUNCTION
+# ---------------------------------------------------------
 def generate_rag_answer(
     query: str,
     top_k: int = 15,
     file_id: str = None,
     mode: str = "general",
     response_format: str = "text",
+    chat_history: list = None,
 ):
-    # ---------- RETRIEVAL ----------
+    # ---------- 1️⃣ RETRIEVAL ----------
     docs = similarity_search(query, top_k, file_id)
 
     if not docs:
         return "No relevant information found in the documents.", []
 
-    # ---------- CONTEXT ----------
+    # ---------- 2️⃣ BUILD CONTEXT ----------
     context_blocks = []
     for i, d in enumerate(docs):
         context_blocks.append(f"[Source {i + 1}]\n{d['text']}")
 
     context = "\n\n".join(context_blocks)
 
-    # ---------- PROMPTS ----------
+    # ---------- 3️⃣ BUILD MESSAGE LIST ----------
+    messages = []
+
+    # System prompt (mode + safety)
     system_prompt = (
         f"{get_mode_instruction(mode)} "
         "You must answer using ONLY the provided context. "
@@ -96,26 +109,45 @@ def generate_rag_answer(
         "'The document does not contain this information.'"
     )
 
-    user_prompt = f"""
+    messages.append(
+        {
+            "role": "system",
+            "content": system_prompt,
+        }
+    )
+
+    # ---------- 4️⃣ ADD CHAT HISTORY (Sliding Window) ----------
+    if chat_history:
+        for msg in chat_history:
+            # msg.role should be "user" or "assistant"
+            messages.append({"role": msg.role, "content": msg.content})
+
+    # ---------- 5️⃣ ADD CURRENT QUESTION ----------
+    final_user_prompt = f"""
 Context:
 {context}
 
-Question:
+Current Question:
 {query}
 
 Response requirements:
 {get_format_instruction(response_format)}
 """
 
-    # ---------- LLM CALL ----------
+    messages.append(
+        {
+            "role": "user",
+            "content": final_user_prompt,
+        }
+    )
+
+    # ---------- 6️⃣ LLM CALL ----------
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
+        messages=messages,
         temperature=0.1,
     )
 
     answer = response.choices[0].message.content.strip()
+
     return answer, docs
