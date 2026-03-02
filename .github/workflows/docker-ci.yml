@@ -1,9 +1,10 @@
 name: CI - Build and Push Docker Images
 
-on:
-  push:
-    branches:
-      - main
+# Temporarily disabled - will re-enable when ready
+# on:
+#   push:
+#     branches:
+#       - main
 
 jobs:
   lint-and-build:
