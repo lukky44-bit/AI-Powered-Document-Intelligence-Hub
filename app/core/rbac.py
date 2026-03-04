@@ -1,9 +1,9 @@
 ROLE_MODE_MAP = {
-    "lawyer": ["legal"],
-    "doctor": ["healthcare"],
-    "researcher": ["academic"],
-    "finance": ["finance"],
-    "business": ["business"],
+    "lawyer": ["legal", "general"],
+    "doctor": ["healthcare", "general"],
+    "researcher": ["academic", "general"],
+    "finance": ["finance", "general"],
+    "business": ["business", "general"],
     "admin": ["legal", "finance", "academic", "healthcare", "business", "general"],
 }
 ROLE_DOMAIN_MAP = {

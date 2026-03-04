@@ -5,6 +5,7 @@ from app.services.rag_service import generate_rag_answer
 from app.services.file_metadata_service import (
     get_file_by_filename,
     get_file_by_file_id,
+    get_accessible_file_ids,
 )
 from app.db.session import get_db
 from app.core.security import get_current_user
@@ -12,6 +13,14 @@ from app.core.rbac import can_access_mode, can_access_domain, has_admin_role
 from app.core.rate_limiter import limiter
 
 router = APIRouter()
+
+MODE_DOMAIN_MAP = {
+    "legal": "legal",
+    "finance": "finance",
+    "academic": "academic",
+    "healthcare": "healthcare",
+    "business": "business",
+}
 
 
 @router.post("/answer")
@@ -43,6 +52,7 @@ def rag_answer(
 
         # ---------- FILENAME / FILE_ID RESOLUTION ----------
         file_record = None
+        scoped_domain = MODE_DOMAIN_MAP.get(mode)
 
         if filename:
             file_record = get_file_by_filename(db, filename)
@@ -66,14 +76,33 @@ def rag_answer(
                     detail="You are not allowed to access this file",
                 )
 
+            if scoped_domain and file_record.domain != scoped_domain:
+                raise HTTPException(
+                    status_code=403,
+                    detail=(
+                        f"Mode '{mode}' only allows documents in '{scoped_domain}' "
+                        "domain"
+                    ),
+                )
+
             # enforce file scoping
             file_id = file_record.file_id
+
+        allowed_file_ids = None
+        if not file_id:
+            allowed_file_ids = get_accessible_file_ids(
+                db=db,
+                user_email=user_email,
+                user_roles=user_roles,
+                domain=scoped_domain,
+            )
 
         # ---------- RAG GENERATION ----------
         answer, docs = generate_rag_answer(
             query=query,
             top_k=top_k,
             file_id=file_id,
+            allowed_file_ids=allowed_file_ids,
             mode=mode,
             response_format=response_format,
         )

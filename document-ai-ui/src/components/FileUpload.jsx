@@ -1,26 +1,16 @@
-import { useState } from "react";
-import { jwtDecode } from "jwt-decode";
+import { useState, useContext } from "react";
+import API from "../api/client";
+import { AuthContext } from "../auth/AuthContext";
 
-export default function FileUpload() {
+export default function FileUpload({ triggerRefresh }) {
+  const { user } = useContext(AuthContext);
+
   const [file, setFile] = useState(null);
   const [domain, setDomain] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const token = localStorage.getItem("token");
-
-  // Decode roles
-  let roles = [];
-  if (token) {
-    try {
-      const decoded = jwtDecode(token);
-      roles = decoded.roles || [];
-    } catch (err) {
-      console.error("Invalid token");
-    }
-  }
-
-  const isAdmin = roles.includes("admin");
+  const isAdmin = user?.roles?.includes("admin");
 
   const handleUpload = async () => {
     if (!file) {
@@ -28,7 +18,6 @@ export default function FileUpload() {
       return;
     }
 
-    // 🔥 Admin must select domain
     if (isAdmin && !domain) {
       setMessage("Admin must select a domain.");
       return;
@@ -45,44 +34,43 @@ export default function FileUpload() {
       setLoading(true);
       setMessage("");
 
-      const response = await fetch("http://localhost:8000/upload/file", {
-        method: "POST",
+      await API.post("/upload/file", formData, {
         headers: {
-          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data",
         },
-        body: formData,
       });
 
-      const data = await response.json();
+      setMessage("File uploaded successfully!");
+      setFile(null);
+      setDomain("");
 
-      if (response.ok) {
-        setMessage("File uploaded successfully!");
-        setFile(null);
-        setDomain(""); // reset domain after upload
-      } else {
-        setMessage(data.detail || "Upload failed.");
-      }
+      // 🔥 trigger global refresh
+      triggerRefresh();
+
     } catch (error) {
-      setMessage("Server error.");
+      setMessage(
+        error.response?.data?.detail || "Upload failed."
+      );
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div>
+    <div style={styles.container}>
       <h3>📤 Upload Documents</h3>
 
       <input
         type="file"
         onChange={(e) => setFile(e.target.files[0])}
+        style={styles.fileInput}
       />
 
-      {/* Admin-only domain selection */}
-      {isAdmin && (
-        <div style={{ marginTop: "10px" }}>
-          <label style={{ marginRight: "8px" }}>Domain:</label>
+      {file && <p style={styles.fileName}>Selected: {file.name}</p>}
 
+      {isAdmin ? (
+        <div style={{ marginTop: "10px" }}>
+          <label>Domain: </label>
           <select
             value={domain}
             onChange={(e) => setDomain(e.target.value)}
@@ -95,20 +83,56 @@ export default function FileUpload() {
             <option value="business">Business</option>
           </select>
         </div>
+      ) : (
+        <p style={{ fontSize: "12px", color: "#666" }}>
+          Domain will be assigned automatically
+          based on your roles.
+        </p>
       )}
 
       <button
         onClick={handleUpload}
-        style={{ marginTop: "10px" }}
+        style={styles.uploadBtn}
+        disabled={loading}
       >
-        {loading ? "Uploading..." : "Upload"}
+        {loading ? "Uploading..." : "➕ Upload Document"}
       </button>
 
       {message && (
-        <p style={{ marginTop: "10px", color: "#555" }}>
+        <p style={styles.message}>
           {message}
         </p>
       )}
     </div>
   );
 }
+
+const styles = {
+  container: {
+    border: "1px solid #eee",
+    borderRadius: "10px",
+    padding: "14px",
+  },
+  fileInput: {
+    marginTop: "4px",
+  },
+  fileName: {
+    fontSize: "13px",
+    color: "#444",
+    marginTop: "8px",
+    marginBottom: "4px",
+  },
+  uploadBtn: {
+    marginTop: "10px",
+    background: "#2563eb",
+    color: "#fff",
+    border: "none",
+    borderRadius: "8px",
+    padding: "8px 12px",
+    cursor: "pointer",
+    fontWeight: 600,
+  },
+  message: {
+    marginTop: "10px",
+  },
+};

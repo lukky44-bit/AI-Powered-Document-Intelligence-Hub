@@ -81,12 +81,18 @@ def generate_rag_answer(
     query: str,
     top_k: int = 15,
     file_id: str = None,
+    allowed_file_ids: list[str] | None = None,
     mode: str = "general",
     response_format: str = "text",
     chat_history: list = None,
 ):
     # ---------- 1️⃣ RETRIEVAL ----------
-    docs = similarity_search(query, top_k, file_id)
+    docs = similarity_search(
+        query=query,
+        top_k=top_k,
+        file_id=file_id,
+        file_ids=None if file_id else allowed_file_ids,
+    )
 
     if not docs:
         return "No relevant information found in the documents.", []

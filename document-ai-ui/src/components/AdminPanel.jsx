@@ -1,11 +1,21 @@
-import { useState } from "react";
+import { useContext, useState } from "react";
+import API from "../api/client";
+import { AuthContext } from "../auth/AuthContext";
 
 export default function AdminPanel() {
+  const { user } = useContext(AuthContext);
+
   const [isOpen, setIsOpen] = useState(true);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState(["lawyer"]);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const isAdmin = user?.roles?.includes("admin");
+
+  if (!isAdmin) {
+    return null;
+  }
 
   const handleRoleChange = async () => {
     if (!email.trim()) {
@@ -13,37 +23,19 @@ export default function AdminPanel() {
       return;
     }
 
-    const token = localStorage.getItem("token");
-
     try {
       setLoading(true);
       setMessage("");
 
-      const response = await fetch(
-        "http://localhost:8000/admin/users/roles",
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            email: email,
-            roles: role,   // ✅ now always array
-          }),
-        }
-      );
+      await API.put("/admin/users/roles", {
+        email,
+        roles: role,
+      });
 
-      const data = await response.json();
-
-      if (response.ok) {
-        setMessage("Role updated successfully!");
-        setEmail("");
-      } else {
-        setMessage(data.detail || "Failed to update role.");
-      }
+      setMessage("Role updated successfully!");
+      setEmail("");
     } catch (error) {
-      setMessage("Server error.");
+      setMessage(error?.response?.data?.detail || "Failed to update role.");
     } finally {
       setLoading(false);
     }

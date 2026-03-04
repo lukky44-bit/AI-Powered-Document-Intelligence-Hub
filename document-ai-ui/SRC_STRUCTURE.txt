@@ -1,0 +1,26 @@
+SRC FOLDER STRUCTURE - document-ai-ui/src/
+============================================
+
+src/
+├── App.jsx
+├── main.jsx
+├── api/
+│   ├── chat.js
+│   ├── client.js
+│   └── file.js
+├── auth/
+│   ├── AuthContext.jsx
+│   └── ProtectedRoute.jsx
+├── components/
+│   ├── AdminPanel.jsx
+│   ├── ChatWindow.jsx
+│   ├── FileList.jsx
+│   ├── FileUpload.jsx
+│   ├── RagQuery.jsx
+│   └── Sidebar.jsx
+├── pages/
+│   ├── Dashboard.jsx
+│   ├── Login.jsx
+│   └── Signup.jsx
+└── utils/
+    └── auth.js

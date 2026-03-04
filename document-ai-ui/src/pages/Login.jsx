@@ -22,7 +22,11 @@ export default function Login() {
       });
 
       const token = response.data.token;
-      login(token);
+      const ok = login(token);
+      if (!ok) {
+        setError("Session token is invalid or expired.");
+        return;
+      }
       navigate("/");
     } catch (err) {
       setError(

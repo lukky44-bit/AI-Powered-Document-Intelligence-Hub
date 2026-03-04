@@ -11,6 +11,7 @@ class Chat(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_email = Column(String, nullable=False)
+    title = Column(String, nullable=True)  # NEW
     created_at = Column(DateTime, default=datetime.utcnow)
 
     messages = relationship("ChatMessage", back_populates="chat", cascade="all, delete")

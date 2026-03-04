@@ -5,9 +5,22 @@ from app.db.session import get_db
 from app.models.chat import Chat
 from app.models.chat_message import ChatMessage
 from app.core.security import get_current_user
+from app.core.rbac import can_access_domain, can_access_mode, has_admin_role
 from app.services.rag_service import generate_rag_answer
+from app.services.file_metadata_service import (
+    get_accessible_file_ids,
+    get_file_by_file_id,
+)
 
 router = APIRouter(prefix="/chats", tags=["Chats"])
+
+MODE_DOMAIN_MAP = {
+    "legal": "legal",
+    "finance": "finance",
+    "academic": "academic",
+    "healthcare": "healthcare",
+    "business": "business",
+}
 
 
 @router.post("/")
@@ -35,7 +48,14 @@ def list_chats(
         .all()
     )
 
-    return [{"chat_id": chat.id, "created_at": chat.created_at} for chat in chats]
+    return [
+        {
+            "chat_id": chat.id,
+            "title": chat.title or str(chat.id)[:8],
+            "created_at": chat.created_at,
+        }
+        for chat in chats
+    ]
 
 
 @router.get("/{chat_id}")
@@ -84,6 +104,50 @@ def send_message(
     mode = data.get("mode", "general")
     response_format = data.get("format", "text")
     top_k = data.get("top_k", 15)
+    file_id = data.get("file_id")
+
+    user_roles = current_user["roles"]
+    user_email = current_user["email"]
+
+    if not has_admin_role(user_roles) and not can_access_mode(user_roles, mode):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Your roles do not allow access to '{mode}' mode",
+        )
+
+    scoped_domain = MODE_DOMAIN_MAP.get(mode)
+
+    if file_id:
+        file_record = get_file_by_file_id(db, file_id)
+        if not file_record:
+            raise HTTPException(status_code=404, detail="File not found")
+
+        if (
+            not has_admin_role(user_roles)
+            and file_record.uploaded_by != user_email
+            and not can_access_domain(user_roles, file_record.domain)
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="You are not allowed to access this file",
+            )
+
+        if scoped_domain and file_record.domain != scoped_domain:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    f"Mode '{mode}' only allows documents in '{scoped_domain}' domain"
+                ),
+            )
+
+    allowed_file_ids = None
+    if not file_id:
+        allowed_file_ids = get_accessible_file_ids(
+            db=db,
+            user_email=user_email,
+            user_roles=user_roles,
+            domain=scoped_domain,
+        )
 
     # 1️⃣ Save user message
     user_msg = ChatMessage(
@@ -91,6 +155,11 @@ def send_message(
         role="user",
         content=user_message,
     )
+    # If chat has no title, generate one
+    if not chat.title:
+        short_title = user_message[:50]
+        chat.title = short_title
+
     db.add(user_msg)
     db.commit()
 
@@ -109,6 +178,8 @@ def send_message(
     answer, docs = generate_rag_answer(
         query=user_message,
         top_k=top_k,
+        file_id=file_id,
+        allowed_file_ids=allowed_file_ids,
         mode=mode,
         response_format=response_format,
         chat_history=history,
@@ -126,4 +197,12 @@ def send_message(
     return {
         "chat_id": chat_id,
         "answer": answer,
+        "sources": [
+            {
+                "file_id": d["metadata"]["doc_id"],
+                "chunk_id": d["metadata"]["chunk_id"],
+                "text": d["text"],
+            }
+            for d in docs
+        ],
     }

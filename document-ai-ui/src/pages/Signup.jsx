@@ -25,7 +25,7 @@ export default function Signup() {
 
       if (response.data?.message) {
         setSuccess("Signup successful. Please login.");
-        setTimeout(() => navigate("/login"), 1500);
+        setTimeout(() => navigate("/login"), 2000);
       }
     } catch (err) {
       setError(
