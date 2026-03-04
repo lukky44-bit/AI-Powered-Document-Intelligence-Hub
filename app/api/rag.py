@@ -9,7 +9,7 @@ from app.services.file_metadata_service import (
 )
 from app.db.session import get_db
 from app.core.security import get_current_user
-from app.core.rbac import can_access_mode, can_access_domain, has_admin_role
+from app.core.rbac import can_access_mode, has_admin_role
 from app.core.rate_limiter import limiter
 
 router = APIRouter()
@@ -66,11 +66,7 @@ def rag_answer(
 
         # ---------- DOMAIN + OWNERSHIP RBAC ----------
         if file_record:
-            if (
-                not has_admin_role(user_roles)
-                and file_record.uploaded_by != user_email
-                and not can_access_domain(user_roles, file_record.domain)
-            ):
+            if not has_admin_role(user_roles) and file_record.uploaded_by != user_email:
                 raise HTTPException(
                     status_code=403,
                     detail="You are not allowed to access this file",
@@ -118,10 +114,8 @@ def rag_answer(
             if not file:
                 continue
 
-            # Skip files the user doesn't have access to
-            if not has_admin_role(user_roles) and not can_access_domain(
-                user_roles, file.domain
-            ):
+            # Skip files the user doesn't own (non-admin)
+            if not has_admin_role(user_roles) and file.uploaded_by != user_email:
                 continue
 
             sources.append(

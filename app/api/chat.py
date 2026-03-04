@@ -5,7 +5,7 @@ from app.db.session import get_db
 from app.models.chat import Chat
 from app.models.chat_message import ChatMessage
 from app.core.security import get_current_user
-from app.core.rbac import can_access_domain, can_access_mode, has_admin_role
+from app.core.rbac import can_access_mode, has_admin_role
 from app.services.rag_service import generate_rag_answer
 from app.services.file_metadata_service import (
     get_accessible_file_ids,
@@ -122,11 +122,7 @@ def send_message(
         if not file_record:
             raise HTTPException(status_code=404, detail="File not found")
 
-        if (
-            not has_admin_role(user_roles)
-            and file_record.uploaded_by != user_email
-            and not can_access_domain(user_roles, file_record.domain)
-        ):
+        if not has_admin_role(user_roles) and file_record.uploaded_by != user_email:
             raise HTTPException(
                 status_code=403,
                 detail="You are not allowed to access this file",

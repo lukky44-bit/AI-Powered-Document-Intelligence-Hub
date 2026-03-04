@@ -43,10 +43,11 @@ def get_accessible_file_ids(
         query = query.filter(File.domain == domain)
 
     if not has_admin_role(user_roles):
-        allowed_domains = get_allowed_domains(user_roles) or []
-        query = query.filter(
-            (File.uploaded_by == user_email) | (File.domain.in_(allowed_domains))
-        )
+        query = query.filter(File.uploaded_by == user_email)
+    else:
+        allowed_domains = get_allowed_domains(user_roles)
+        if allowed_domains:
+            query = query.filter(File.domain.in_(allowed_domains))
 
     rows = query.all()
     return [row.file_id for row in rows]
