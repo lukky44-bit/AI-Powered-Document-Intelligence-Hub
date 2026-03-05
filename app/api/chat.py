@@ -6,7 +6,7 @@ from app.models.chat import Chat
 from app.models.chat_message import ChatMessage
 from app.core.security import get_current_user
 from app.core.rbac import can_access_mode, has_admin_role
-from app.services.rag_service import generate_rag_answer
+from app.services.rag_service import generate_rag_answer, summarize_messages
 from app.services.file_metadata_service import (
     get_accessible_file_ids,
     get_file_by_file_id,
@@ -21,6 +21,46 @@ MODE_DOMAIN_MAP = {
     "healthcare": "healthcare",
     "business": "business",
 }
+
+
+def compress_chat_history(db: Session, chat: Chat) -> None:
+    total_messages = (
+        db.query(ChatMessage).filter(ChatMessage.chat_id == chat.id).count()
+    )
+
+    if total_messages <= 6:
+        return
+
+    oldest_messages = (
+        db.query(ChatMessage)
+        .filter(ChatMessage.chat_id == chat.id)
+        .order_by(ChatMessage.created_at.asc())
+        .limit(4)
+        .all()
+    )
+
+    if not oldest_messages:
+        return
+
+    summary_input = []
+    if chat.summary:
+        summary_input.append(
+            {
+                "role": "system",
+                "content": f"Previous summary:\n{chat.summary}",
+            }
+        )
+
+    summary_input.extend(oldest_messages)
+    new_summary = summarize_messages(summary_input)
+
+    if not new_summary:
+        return
+
+    chat.summary = new_summary
+
+    for msg in oldest_messages:
+        db.delete(msg)
 
 
 @router.post("/")
@@ -159,16 +199,16 @@ def send_message(
     db.add(user_msg)
     db.commit()
 
-    # 2️⃣ Get last 6 messages (sliding window)
-    history = (
+    # 2️⃣ Get recent messages for prompt context
+    recent_messages = (
         db.query(ChatMessage)
         .filter(ChatMessage.chat_id == chat_id)
         .order_by(ChatMessage.created_at.desc())
-        .limit(5)
+        .limit(4)
         .all()
     )
 
-    history = list(reversed(history))
+    recent_messages = list(reversed(recent_messages))
 
     # 3️⃣ Generate RAG response with history
     answer, docs = generate_rag_answer(
@@ -178,7 +218,8 @@ def send_message(
         allowed_file_ids=allowed_file_ids,
         mode=mode,
         response_format=response_format,
-        chat_history=history,
+        conversation_summary=chat.summary,
+        recent_messages=recent_messages,
     )
 
     # 4️⃣ Save assistant response
@@ -188,6 +229,15 @@ def send_message(
         content=answer,
     )
     db.add(assistant_msg)
+
+    # 5️⃣ Compress older messages into chat.summary when needed
+    try:
+        compress_chat_history(db, chat)
+    except Exception:
+        # Keep chat history safe: if summarization fails, don't delete messages.
+        db.rollback()
+        db.add(assistant_msg)
+
     db.commit()
 
     return {

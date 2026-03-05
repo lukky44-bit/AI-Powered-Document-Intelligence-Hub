@@ -1,6 +1,7 @@
 from groq import Groq
 from app.core.config import settings
 from app.services.embedding_service import similarity_search
+from typing import Any
 
 client = Groq(api_key=settings.GROQ_API_KEY)
 
@@ -74,6 +75,53 @@ def get_mode_instruction(mode: str):
     return "You are an intelligent document assistant."
 
 
+def _format_dialogue(messages: list[Any]) -> str:
+    lines = []
+
+    for msg in messages:
+        role = getattr(msg, "role", None)
+        content = getattr(msg, "content", None)
+
+        if isinstance(msg, dict):
+            role = msg.get("role")
+            content = msg.get("content")
+
+        if not content:
+            continue
+
+        role_label = (role or "message").upper()
+        lines.append(f"{role_label}: {content}")
+
+    return "\n".join(lines)
+
+
+def summarize_messages(messages: list[Any]) -> str:
+    dialogue = _format_dialogue(messages)
+    if not dialogue.strip():
+        return ""
+
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "Summarize the following conversation briefly. "
+                    "Capture the important context and topics discussed. "
+                    "Keep it concise but informative."
+                ),
+            },
+            {
+                "role": "user",
+                "content": dialogue,
+            },
+        ],
+        temperature=0.1,
+    )
+
+    return response.choices[0].message.content.strip()
+
+
 # ---------------------------------------------------------
 # CONVERSATIONAL RAG FUNCTION
 # ---------------------------------------------------------
@@ -84,7 +132,8 @@ def generate_rag_answer(
     allowed_file_ids: list[str] | None = None,
     mode: str = "general",
     response_format: str = "text",
-    chat_history: list = None,
+    conversation_summary: str | None = None,
+    recent_messages: list[Any] | None = None,
 ):
     # ---------- 1️⃣ RETRIEVAL ----------
     docs = similarity_search(
@@ -122,18 +171,24 @@ def generate_rag_answer(
         }
     )
 
-    # ---------- 4️⃣ ADD CHAT HISTORY (Sliding Window) ----------
-    if chat_history:
-        for msg in chat_history:
-            # msg.role should be "user" or "assistant"
-            messages.append({"role": msg.role, "content": msg.content})
+    # ---------- 4️⃣ BUILD SUMMARY + RECENT CONTEXT ----------
+    summary_section = ""
+    if conversation_summary:
+        summary_section = f"Conversation Summary:\n{conversation_summary}\n\n"
+
+    recent_messages_text = _format_dialogue(recent_messages or [])
+    if not recent_messages_text.strip():
+        recent_messages_text = "(No recent messages)"
 
     # ---------- 5️⃣ ADD CURRENT QUESTION ----------
     final_user_prompt = f"""
-Context:
+{summary_section}Recent Messages:
+{recent_messages_text}
+
+Relevant Documents:
 {context}
 
-Current Question:
+User Question:
 {query}
 
 Response requirements:
