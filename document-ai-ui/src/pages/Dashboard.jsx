@@ -1,11 +1,15 @@
-import { useState, useContext } from "react";
+import { useContext, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import ChatWindow from "../components/ChatWindow";
 import { AuthContext } from "../auth/AuthContext";
 
 export default function Dashboard() {
-  const [activeChat, setActiveChat] = useState(null);
   const [fileRefreshKey, setFileRefreshKey] = useState(0);
+  const { chatId } = useParams();
+  const navigate = useNavigate();
+
+  const activeChat = chatId || null;
 
   const { user, logout } = useContext(AuthContext);
 
@@ -13,12 +17,21 @@ export default function Dashboard() {
     setFileRefreshKey((prev) => prev + 1);
   };
 
+  const handleSelectChat = (id) => {
+    navigate(`/chats/${id}/message`);
+  };
+
+  const handleCreateChat = (id) => {
+    navigate(`/chats/${id}/message`);
+  };
+
   return (
     <div style={styles.container}>
       <div style={styles.sidebar}>
         <Sidebar
           activeChat={activeChat}
-          setActiveChat={setActiveChat}
+          onSelectChat={handleSelectChat}
+          onCreateChat={handleCreateChat}
           fileRefreshKey={fileRefreshKey}
         />
       </div>

@@ -3,7 +3,12 @@ import { createChat, fetchChats } from "../api/chat";
 import AdminPanel from "./AdminPanel";
 import FileList from "./FileList";
 
-export default function Sidebar({ activeChat, setActiveChat, fileRefreshKey }) {
+export default function Sidebar({
+  activeChat,
+  onSelectChat,
+  onCreateChat,
+  fileRefreshKey,
+}) {
   const [chats, setChats] = useState([]);
 
   const loadChats = async () => {
@@ -17,7 +22,7 @@ export default function Sidebar({ activeChat, setActiveChat, fileRefreshKey }) {
 
   const handleNewChat = async () => {
     const data = await createChat();
-    setActiveChat(data.chat_id);
+    onCreateChat(data.chat_id);
     loadChats();
   };
 
@@ -33,11 +38,10 @@ export default function Sidebar({ activeChat, setActiveChat, fileRefreshKey }) {
         {chats.map((chat) => (
           <li
             key={chat.chat_id}
-            onClick={() => setActiveChat(chat.chat_id)}
+            onClick={() => onSelectChat(chat.chat_id)}
             style={{
               ...styles.item,
-              background:
-                activeChat === chat.chat_id ? "#eee" : "transparent",
+              background: activeChat === chat.chat_id ? "#eee" : "transparent",
             }}
           >
             {chat.title}
