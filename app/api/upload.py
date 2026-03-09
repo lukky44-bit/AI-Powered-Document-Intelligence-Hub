@@ -69,16 +69,16 @@ async def upload_file(
         if ext == "pdf":
             text = extract_text_from_pdf(data["path"])
             if not text.strip():
-                text = extract_text(data["file_id"])
+                text = extract_text(data["path"])
 
         elif ext in ["png", "jpg", "jpeg"]:
-            text = extract_text(data["file_id"])
+            text = extract_text(data["path"])
 
         elif ext == "docx":
             text = extract_text_from_docx(data["path"])
 
         elif ext in ["mp3", "wav", "m4a", "mp4"]:
-            text = transcribe_audio(data["file_id"])
+            text = transcribe_audio(data["path"])
 
         else:
             raise ValueError("Unsupported file type for indexing")
