@@ -26,53 +26,35 @@ MODE_DOMAIN_MAP = {
 
 
 def get_or_create_message_records(db: Session, chat_id: UUID, user_email: str):
-    """Get or create the two ChatMessage records (user_messages and assistant_messages)."""
-    user_msgs = (
-        db.query(ChatMessage)
-        .filter(ChatMessage.chat_id == chat_id, ChatMessage.role == "user_messages")
-        .first()
+    """Get or create the single ChatMessage record for this chat."""
+    message_record = (
+        db.query(ChatMessage).filter(ChatMessage.chat_id == chat_id).first()
     )
 
-    if not user_msgs:
-        user_msgs = ChatMessage(
-            chat_id=chat_id, user_email=user_email, role="user_messages", messages=[]
-        )
-        db.add(user_msgs)
-
-    assistant_msgs = (
-        db.query(ChatMessage)
-        .filter(
-            ChatMessage.chat_id == chat_id, ChatMessage.role == "assistant_messages"
-        )
-        .first()
-    )
-
-    if not assistant_msgs:
-        assistant_msgs = ChatMessage(
+    if not message_record:
+        message_record = ChatMessage(
             chat_id=chat_id,
             user_email=user_email,
-            role="assistant_messages",
-            messages=[],
+            user_messages=[],
+            assistant_messages=[],
         )
-        db.add(assistant_msgs)
+        db.add(message_record)
+        db.commit()
+        db.refresh(message_record)
 
-    db.commit()
-    db.refresh(user_msgs)
-    db.refresh(assistant_msgs)
-
-    return user_msgs, assistant_msgs
+    return message_record
 
 
-def get_all_messages(user_msgs: ChatMessage, assistant_msgs: ChatMessage):
-    """Merge and sort messages from both records."""
+def get_all_messages(message_record: ChatMessage):
+    """Merge and sort messages from one record."""
     all_msgs = []
 
-    for msg in user_msgs.messages or []:
+    for msg in message_record.user_messages or []:
         all_msgs.append(
             {"role": "user", "content": msg["content"], "timestamp": msg["timestamp"]}
         )
 
-    for msg in assistant_msgs.messages or []:
+    for msg in message_record.assistant_messages or []:
         all_msgs.append(
             {
                 "role": "assistant",
@@ -86,16 +68,16 @@ def get_all_messages(user_msgs: ChatMessage, assistant_msgs: ChatMessage):
     return all_msgs
 
 
-def compress_chat_history(
-    db: Session, chat: Chat, user_msgs: ChatMessage, assistant_msgs: ChatMessage
-) -> None:
+def compress_chat_history(db: Session, chat: Chat, message_record: ChatMessage) -> None:
     """Compress chat history when total messages exceed 6."""
-    total_messages = len(user_msgs.messages or []) + len(assistant_msgs.messages or [])
+    total_messages = len(message_record.user_messages or []) + len(
+        message_record.assistant_messages or []
+    )
 
     if total_messages <= 6:
         return
 
-    all_msgs = get_all_messages(user_msgs, assistant_msgs)
+    all_msgs = get_all_messages(message_record)
 
     if len(all_msgs) <= 6:
         return
@@ -125,19 +107,19 @@ def compress_chat_history(
     # Remove oldest 4 messages from the JSONB arrays
     oldest_timestamps = {msg["timestamp"] for msg in oldest_messages}
 
-    user_msgs.messages = [
+    message_record.user_messages = [
         msg
-        for msg in (user_msgs.messages or [])
+        for msg in (message_record.user_messages or [])
         if msg["timestamp"] not in oldest_timestamps
     ]
-    flag_modified(user_msgs, "messages")
+    flag_modified(message_record, "user_messages")
 
-    assistant_msgs.messages = [
+    message_record.assistant_messages = [
         msg
-        for msg in (assistant_msgs.messages or [])
+        for msg in (message_record.assistant_messages or [])
         if msg["timestamp"] not in oldest_timestamps
     ]
-    flag_modified(assistant_msgs, "messages")
+    flag_modified(message_record, "assistant_messages")
 
     db.commit()
 
@@ -192,26 +174,15 @@ def get_chat_messages(
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
 
-    # Get the two message records
-    user_msgs = (
-        db.query(ChatMessage)
-        .filter(ChatMessage.chat_id == chat_id, ChatMessage.role == "user_messages")
-        .first()
+    message_record = (
+        db.query(ChatMessage).filter(ChatMessage.chat_id == chat_id).first()
     )
 
-    assistant_msgs = (
-        db.query(ChatMessage)
-        .filter(
-            ChatMessage.chat_id == chat_id, ChatMessage.role == "assistant_messages"
-        )
-        .first()
-    )
-
-    if not user_msgs or not assistant_msgs:
+    if not message_record:
         return []
 
     # Merge and sort all messages
-    all_msgs = get_all_messages(user_msgs, assistant_msgs)
+    all_msgs = get_all_messages(message_record)
 
     return [
         {
@@ -284,16 +255,18 @@ def send_message(
             domain=scoped_domain,
         )
 
-    # Get or create the two message records
-    user_msgs, assistant_msgs = get_or_create_message_records(db, chat_id, user_email)
+    # Get or create the single message record
+    message_record = get_or_create_message_records(db, chat_id, user_email)
 
     # 1️⃣ Save user message to JSONB array
     timestamp = datetime.utcnow().isoformat()
-    if user_msgs.messages is None:
-        user_msgs.messages = []
+    if message_record.user_messages is None:
+        message_record.user_messages = []
 
-    user_msgs.messages.append({"content": user_message, "timestamp": timestamp})
-    flag_modified(user_msgs, "messages")  # Mark JSONB field as modified
+    message_record.user_messages.append(
+        {"content": user_message, "timestamp": timestamp}
+    )
+    flag_modified(message_record, "user_messages")  # Mark JSONB field as modified
 
     # If chat has no title, generate one
     if not chat.title:
@@ -303,7 +276,7 @@ def send_message(
     db.commit()
 
     # 2️⃣ Get recent messages for prompt context
-    all_msgs = get_all_messages(user_msgs, assistant_msgs)
+    all_msgs = get_all_messages(message_record)
     recent_messages = all_msgs[-4:] if len(all_msgs) > 4 else all_msgs
 
     # 3️⃣ Generate RAG response with history
@@ -320,20 +293,26 @@ def send_message(
 
     # 4️⃣ Save assistant response to JSONB array
     timestamp = datetime.utcnow().isoformat()
-    if assistant_msgs.messages is None:
-        assistant_msgs.messages = []
+    if message_record.assistant_messages is None:
+        message_record.assistant_messages = []
 
-    assistant_msgs.messages.append({"content": answer, "timestamp": timestamp})
-    flag_modified(assistant_msgs, "messages")  # Mark JSONB field as modified
+    message_record.assistant_messages.append(
+        {"content": answer, "timestamp": timestamp}
+    )
+    flag_modified(message_record, "assistant_messages")  # Mark JSONB field as modified
 
     # 5️⃣ Compress older messages into chat.summary when needed
     try:
-        compress_chat_history(db, chat, user_msgs, assistant_msgs)
+        compress_chat_history(db, chat, message_record)
     except Exception:
         # Keep chat history safe: if summarization fails, don't delete messages.
         db.rollback()
-        assistant_msgs.messages.append({"content": answer, "timestamp": timestamp})
-        flag_modified(assistant_msgs, "messages")
+        if message_record.assistant_messages is None:
+            message_record.assistant_messages = []
+        message_record.assistant_messages.append(
+            {"content": answer, "timestamp": timestamp}
+        )
+        flag_modified(message_record, "assistant_messages")
 
     db.commit()
 

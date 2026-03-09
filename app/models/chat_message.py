@@ -9,10 +9,14 @@ class ChatMessage(Base):
     __tablename__ = "chat_messages"
 
     id = Column(Integer, primary_key=True, index=True)
-    chat_id = Column(UUID(as_uuid=True), ForeignKey("chats.id"))
+    chat_id = Column(
+        UUID(as_uuid=True), ForeignKey("chats.id"), nullable=False, unique=True
+    )
     user_email = Column(String, nullable=False)
-    role = Column(String, nullable=False)  # "user_messages" or "assistant_messages"
-    messages = Column(
+    user_messages = Column(
+        JSONB, nullable=False, default=list
+    )  # Array of {content: str, timestamp: datetime}
+    assistant_messages = Column(
         JSONB, nullable=False, default=list
     )  # Array of {content: str, timestamp: datetime}
     created_at = Column(DateTime, default=datetime.utcnow)
