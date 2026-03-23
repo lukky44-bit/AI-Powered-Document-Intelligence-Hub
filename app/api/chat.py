@@ -189,6 +189,7 @@ def get_chat_messages(
             "role": msg["role"],
             "content": msg["content"],
             "created_at": msg["timestamp"],
+            "answer_source": msg.get("answer_source"),
         }
         for msg in all_msgs
     ]
@@ -280,7 +281,7 @@ def send_message(
     recent_messages = all_msgs[-4:] if len(all_msgs) > 4 else all_msgs
 
     # 3️⃣ Generate RAG response with history
-    answer, docs = generate_rag_answer(
+    answer, docs, source_details = generate_rag_answer(
         query=user_message,
         top_k=top_k,
         file_id=file_id,
@@ -289,6 +290,7 @@ def send_message(
         response_format=response_format,
         conversation_summary=chat.summary,
         recent_messages=recent_messages,
+        include_source_details=True,
     )
 
     # 4️⃣ Save assistant response to JSONB array
@@ -297,7 +299,11 @@ def send_message(
         message_record.assistant_messages = []
 
     message_record.assistant_messages.append(
-        {"content": answer, "timestamp": timestamp}
+        {
+            "content": answer,
+            "timestamp": timestamp,
+            "answer_source": source_details,
+        }
     )
     flag_modified(message_record, "assistant_messages")  # Mark JSONB field as modified
 
@@ -310,7 +316,11 @@ def send_message(
         if message_record.assistant_messages is None:
             message_record.assistant_messages = []
         message_record.assistant_messages.append(
-            {"content": answer, "timestamp": timestamp}
+            {
+                "content": answer,
+                "timestamp": timestamp,
+                "answer_source": source_details,
+            }
         )
         flag_modified(message_record, "assistant_messages")
 
@@ -319,6 +329,7 @@ def send_message(
     return {
         "chat_id": chat_id,
         "answer": answer,
+        "answer_source": source_details,
         "sources": [
             {
                 "file_id": d["metadata"]["doc_id"],

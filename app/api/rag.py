@@ -94,13 +94,14 @@ def rag_answer(
             )
 
         # ---------- RAG GENERATION ----------
-        answer, docs = generate_rag_answer(
+        answer, docs, source_details = generate_rag_answer(
             query=query,
             top_k=top_k,
             file_id=file_id,
             allowed_file_ids=allowed_file_ids,
             mode=mode,
             response_format=response_format,
+            include_source_details=True,
         )
 
         # ---------- SOURCE ATTRIBUTION + SAFETY ----------
@@ -128,8 +129,8 @@ def rag_answer(
                 }
             )
 
-        # If no accessible sources found, return a helpful message instead of error
-        if not sources:
+        # If retriever returned docs but none are accessible, return helpful RBAC message.
+        if docs and not sources:
             answer_msg = (
                 "No accessible documents found for your query. This could mean: "
                 "(1) No documents match your search, (2) The relevant documents "
@@ -142,6 +143,7 @@ def rag_answer(
                 "roles": user_roles,
                 "answer": answer_msg,
                 "sources": [],
+                "answer_source": source_details,
                 "user": user_email,
             }
 
@@ -151,6 +153,7 @@ def rag_answer(
             "roles": user_roles,
             "answer": answer,
             "sources": sources,
+            "answer_source": source_details,
             "user": user_email,
         }
 

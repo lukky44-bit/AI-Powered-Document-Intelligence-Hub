@@ -1,6 +1,12 @@
 from groq import Groq
+from langchain.agents import create_agent
+from langchain_community.tools import WikipediaQueryRun
+from langchain_community.utilities import WikipediaAPIWrapper
+from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.tools import create_retriever_tool
+from langchain_groq import ChatGroq
 from app.core.config import settings
-from app.services.embedding_service import similarity_search
+from app.services.embedding_service import get_ensemble_retriever, similarity_search
 from typing import Any
 
 client = Groq(api_key=settings.GROQ_API_KEY)
@@ -122,6 +128,70 @@ def summarize_messages(messages: list[Any]) -> str:
     return response.choices[0].message.content.strip()
 
 
+def _extract_tool_names(messages: list[Any] | None) -> set[str]:
+    used_tools: set[str] = set()
+    if not messages:
+        return used_tools
+
+    for msg in messages:
+        if isinstance(msg, ToolMessage):
+            tool_name = getattr(msg, "name", None)
+            if tool_name:
+                used_tools.add(str(tool_name))
+
+    return used_tools
+
+
+def _is_no_info_answer(answer: str) -> bool:
+    text = (answer or "").strip().lower()
+    if not text:
+        return True
+
+    no_info_signals = [
+        "the document does not contain this information",
+        "does not contain this information",
+        "not available in the provided context",
+        "not enough information",
+        "insufficient information",
+        "insufficient_document_context",
+    ]
+
+    return any(signal in text for signal in no_info_signals)
+
+
+def _answer_from_wikipedia(
+    query: str,
+    mode: str,
+    response_format: str,
+    wikipedia_tool: WikipediaQueryRun,
+):
+    wiki_text = wikipedia_tool.run(query).strip()
+    if not wiki_text:
+        return None
+
+    wiki_response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    f"{get_mode_instruction(mode)} Use the Wikipedia context to answer."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Wikipedia Result:\n{wiki_text}\n\n"
+                    f"User Question:\n{query}\n\n"
+                    f"{get_format_instruction(response_format)}"
+                ),
+            },
+        ],
+        temperature=0.1,
+    )
+    return wiki_response.choices[0].message.content.strip()
+
+
 # ---------------------------------------------------------
 # CONVERSATIONAL RAG FUNCTION
 # ---------------------------------------------------------
@@ -134,8 +204,9 @@ def generate_rag_answer(
     response_format: str = "text",
     conversation_summary: str | None = None,
     recent_messages: list[Any] | None = None,
+    include_source_details: bool = False,
 ):
-    # ---------- 1️⃣ RETRIEVAL ----------
+    # ---------- 1️⃣ RETRIEVAL FOR SOURCE ATTRIBUTION ----------
     docs = similarity_search(
         query=query,
         top_k=top_k,
@@ -143,35 +214,42 @@ def generate_rag_answer(
         file_ids=None if file_id else allowed_file_ids,
     )
 
-    if not docs:
-        return "No relevant information found in the documents.", []
+    # ---------- 2️⃣ BUILD AGENT TOOLS ----------
+    tools = []
 
-    # ---------- 2️⃣ BUILD CONTEXT ----------
-    context_blocks = []
-    for i, d in enumerate(docs):
-        context_blocks.append(f"[Source {i + 1}]\n{d['text']}")
-
-    context = "\n\n".join(context_blocks)
-
-    # ---------- 3️⃣ BUILD MESSAGE LIST ----------
-    messages = []
-
-    # System prompt (mode + safety)
-    system_prompt = (
-        f"{get_mode_instruction(mode)} "
-        "You must answer using ONLY the provided context. "
-        "If the answer is not present in the context, say "
-        "'The document does not contain this information.'"
+    ensemble_retriever = get_ensemble_retriever(
+        top_k=top_k,
+        file_id=file_id,
+        file_ids=None if file_id else allowed_file_ids,
     )
 
-    messages.append(
-        {
-            "role": "system",
-            "content": system_prompt,
-        }
-    )
+    if ensemble_retriever:
+        tools.append(
+            create_retriever_tool(
+                retriever=ensemble_retriever,
+                name="document_retriever",
+                description=(
+                    "Search uploaded documents for relevant passages. "
+                    "Use this FIRST for every question."
+                ),
+            )
+        )
 
-    # ---------- 4️⃣ BUILD SUMMARY + RECENT CONTEXT ----------
+    wikipedia_tool = WikipediaQueryRun(
+        api_wrapper=WikipediaAPIWrapper(top_k_results=3, doc_content_chars_max=3000)
+    )
+    tools.append(wikipedia_tool)
+
+    if not tools:
+        if include_source_details:
+            return (
+                "No tools available to answer the question.",
+                [],
+                {"source_type": "none", "tools_used": []},
+            )
+        return "No tools available to answer the question.", []
+
+    # ---------- 3️⃣ BUILD CONTEXT FOR AGENT INPUT ----------
     summary_section = ""
     if conversation_summary:
         summary_section = f"Conversation Summary:\n{conversation_summary}\n\n"
@@ -180,35 +258,201 @@ def generate_rag_answer(
     if not recent_messages_text.strip():
         recent_messages_text = "(No recent messages)"
 
-    # ---------- 5️⃣ ADD CURRENT QUESTION ----------
-    final_user_prompt = f"""
+    agent_input = f"""
 {summary_section}Recent Messages:
 {recent_messages_text}
-
-Relevant Documents:
-{context}
 
 User Question:
 {query}
 
-Response requirements:
+Output formatting requirement:
 {get_format_instruction(response_format)}
 """
 
-    messages.append(
-        {
-            "role": "user",
-            "content": final_user_prompt,
-        }
-    )
-
-    # ---------- 6️⃣ LLM CALL ----------
-    response = client.chat.completions.create(
+    # ---------- 4️⃣ BUILD AGENT ----------
+    llm = ChatGroq(
+        api_key=settings.GROQ_API_KEY,
         model="llama-3.3-70b-versatile",
-        messages=messages,
         temperature=0.1,
     )
 
-    answer = response.choices[0].message.content.strip()
+    agent = create_agent(
+        model=llm,
+        tools=tools,
+        system_prompt=(
+            f"{get_mode_instruction(mode)} "
+            "You are an agentic assistant with two tools: "
+            "`document_retriever` and `wikipedia`. "
+            "Always call `document_retriever` first. "
+            "If document retrieval returns empty or irrelevant results, "
+            "then call `wikipedia`. "
+            "Never reply with 'The document does not contain this information.' "
+            "If document evidence is insufficient, you must use `wikipedia` before finalizing. "
+            "Prefer uploaded document evidence when available. "
+            "After tool usage, generate the final response clearly and concisely."
+        ),
+    )
 
-    return answer, docs
+    # ---------- 5️⃣ EXECUTE AGENT ----------
+    try:
+        result = agent.invoke(
+            {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": agent_input,
+                    }
+                ]
+            }
+        )
+
+        answer = ""
+        source_type = "unknown"
+        messages = result.get("messages") if isinstance(result, dict) else None
+        used_tools = _extract_tool_names(messages)
+        used_retriever = "document_retriever" in used_tools
+        used_wikipedia = "wikipedia" in used_tools
+
+        if used_retriever and used_wikipedia:
+            source_type = "documents_and_wikipedia"
+        elif used_retriever:
+            source_type = "documents"
+        elif used_wikipedia:
+            source_type = "wikipedia"
+
+        if messages:
+            for msg in reversed(messages):
+                if isinstance(msg, AIMessage) and isinstance(msg.content, str):
+                    answer = msg.content.strip()
+                    if answer:
+                        break
+
+        if answer:
+            # Strict grounding: do not accept free-form model answers that used no tool.
+            if not used_tools:
+                answer = ""
+
+        if answer:
+            if _is_no_info_answer(answer):
+                wiki_answer = _answer_from_wikipedia(
+                    query=query,
+                    mode=mode,
+                    response_format=response_format,
+                    wikipedia_tool=wikipedia_tool,
+                )
+                if wiki_answer:
+                    if include_source_details:
+                        return (
+                            wiki_answer,
+                            [],
+                            {
+                                "source_type": "wikipedia",
+                                "tools_used": sorted(set(used_tools) | {"wikipedia"}),
+                            },
+                        )
+                    return wiki_answer, []
+
+            docs_for_response = docs
+            if source_type == "wikipedia":
+                docs_for_response = []
+
+            if include_source_details:
+                return (
+                    answer,
+                    docs_for_response,
+                    {
+                        "source_type": source_type,
+                        "tools_used": sorted(used_tools),
+                    },
+                )
+            return answer, docs_for_response
+    except Exception:
+        pass
+
+    # ---------- 6️⃣ SAFE FALLBACK ----------
+    if docs:
+        context_blocks = []
+        for i, d in enumerate(docs):
+            context_blocks.append(f"[Source {i + 1}]\n{d['text']}")
+
+        context = "\n\n".join(context_blocks)
+
+        fallback_response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        f"{get_mode_instruction(mode)} "
+                        "Answer using ONLY the provided document context. "
+                        "Do NOT use your internal knowledge. "
+                        "If context is insufficient, reply EXACTLY with: INSUFFICIENT_DOCUMENT_CONTEXT"
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Relevant Documents:\n{context}\n\n"
+                        f"Question:\n{query}\n\n"
+                        f"{get_format_instruction(response_format)}"
+                    ),
+                },
+            ],
+            temperature=0.1,
+        )
+        fallback_answer = fallback_response.choices[0].message.content.strip()
+
+        if _is_no_info_answer(fallback_answer):
+            wiki_answer = _answer_from_wikipedia(
+                query=query,
+                mode=mode,
+                response_format=response_format,
+                wikipedia_tool=wikipedia_tool,
+            )
+            if wiki_answer:
+                if include_source_details:
+                    return (
+                        wiki_answer,
+                        [],
+                        {
+                            "source_type": "wikipedia",
+                            "tools_used": ["wikipedia"],
+                        },
+                    )
+                return wiki_answer, []
+
+        if include_source_details:
+            return (
+                fallback_answer,
+                docs,
+                {
+                    "source_type": "documents",
+                    "tools_used": ["document_retriever"],
+                },
+            )
+        return fallback_answer, docs
+
+    wiki_answer = _answer_from_wikipedia(
+        query=query,
+        mode=mode,
+        response_format=response_format,
+        wikipedia_tool=wikipedia_tool,
+    )
+    if not wiki_answer:
+        if include_source_details:
+            return (
+                "No relevant information found in documents or Wikipedia.",
+                [],
+                {"source_type": "none", "tools_used": []},
+            )
+        return "No relevant information found in documents or Wikipedia.", []
+    if include_source_details:
+        return (
+            wiki_answer,
+            [],
+            {
+                "source_type": "wikipedia",
+                "tools_used": ["wikipedia"],
+            },
+        )
+    return wiki_answer, []

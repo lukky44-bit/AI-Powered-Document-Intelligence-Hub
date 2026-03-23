@@ -5,6 +5,20 @@ import API from "../api/client";
 import { AuthContext } from "../auth/AuthContext";
 import ReactMarkdown from "react-markdown";
 
+const SOURCE_BADGE_MAP = {
+  documents: { label: "📄 Document", background: "#ecfdf3", color: "#027a48" },
+  wikipedia: { label: "🌐 Wikipedia", background: "#eff8ff", color: "#175cd3" },
+  documents_and_wikipedia: {
+    label: "📄+🌐 Document + Wikipedia",
+    background: "#f9f5ff",
+    color: "#6941c6",
+  },
+};
+
+function getSourceBadge(sourceType) {
+  return SOURCE_BADGE_MAP[sourceType] || null;
+}
+
 export default function ChatWindow({ activeChat, fileRefreshKey, onUploadSuccess }) {
   const { user } = useContext(AuthContext);
 
@@ -114,6 +128,7 @@ export default function ChatWindow({ activeChat, fileRefreshKey, onUploadSuccess
         content: response.answer,
         format,
         sources: response.sources || [],
+        answer_source: response.answer_source || null,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
@@ -193,6 +208,24 @@ export default function ChatWindow({ activeChat, fileRefreshKey, onUploadSuccess
                 msg.content
               )}
             </div>
+
+            {msg.role === "assistant" && msg.answer_source?.source_type && (() => {
+              const badge = getSourceBadge(msg.answer_source.source_type);
+              if (!badge) return null;
+
+              return (
+                <div
+                  style={{
+                    ...styles.sourceBadge,
+                    background: badge.background,
+                    color: badge.color,
+                  }}
+                  title={`Source type: ${msg.answer_source.source_type}`}
+                >
+                  {badge.label}
+                </div>
+              );
+            })()}
 
             {msg.role === "assistant" &&
               msg.sources &&
@@ -398,6 +431,15 @@ const styles = {
     padding: "8px",
     borderRadius: "6px",
     marginTop: "5px",
+  },
+  sourceBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    marginTop: "8px",
+    padding: "3px 8px",
+    borderRadius: "999px",
+    fontSize: "12px",
+    fontWeight: 600,
   },
   error: {
     color: "#b42318",

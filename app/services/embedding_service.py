@@ -7,19 +7,13 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from sentence_transformers.cross_encoder import CrossEncoder
 from app.core.config import settings
 
 # Embedding model
 embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
-# Cross-encoder reranker
-cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L6-v2")
-
 PERSIST_DIR = settings.EMBEDDINGS_DIR
 HYBRID_WEIGHTS = [0.5, 0.5]
-# Retrieve this many candidates before reranking, then trim to top_k
-RERANK_CANDIDATE_MULTIPLIER = 3
 
 
 def get_vector_store():
@@ -158,55 +152,71 @@ def store_text(text: str, doc_id: str):
     }
 
 
-def rerank_documents(
-    query: str,
-    docs: list[dict],
-    top_k: int,
-) -> list[dict]:
-    """Score every (query, document) pair with the cross-encoder and return
-    the top_k documents sorted by descending relevance score."""
-    if not docs:
-        return docs
-
-    pairs = [[query, doc["text"]] for doc in docs]
-    scores = cross_encoder.predict(pairs)
-
-    ranked = sorted(
-        zip(scores, docs),
-        key=lambda x: x[0],
-        reverse=True,
-    )
-    return [doc for _, doc in ranked[:top_k]]
-
-
 def similarity_search(
     query: str,
-    top_k: int = 10,
+    top_k: int = 5,
     file_id: str = None,
     file_ids: list[str] | None = None,
 ):
     if file_ids is not None and not file_ids:
         return []
 
+    ensemble_retriever = get_ensemble_retriever(
+        top_k=top_k,
+        file_id=file_id,
+        file_ids=file_ids,
+    )
+    if not ensemble_retriever:
+        return []
+
+    try:
+        results = ensemble_retriever.invoke(query)
+    except Exception:
+        fallback_retriever = get_ensemble_retriever(
+            top_k=max(top_k * 4, top_k),
+            file_id=file_id,
+            file_ids=file_ids,
+        )
+        if not fallback_retriever:
+            return []
+        results = fallback_retriever.invoke(query)
+    results = _filter_documents_by_scope(
+        results,
+        file_id=file_id,
+        file_ids=file_ids,
+    )[:top_k]
+
+    formatted = []
+    for doc in results:
+        formatted.append({"text": doc.page_content, "metadata": doc.metadata})
+
+    return formatted
+
+
+def get_ensemble_retriever(
+    top_k: int = 15,
+    file_id: str | None = None,
+    file_ids: list[str] | None = None,
+):
+    if file_ids is not None and not file_ids:
+        return None
+
     vectorstore = get_vector_store()
     if not vectorstore:
-        raise ValueError("Vector store is empty. Store documents first.")
-
-    # Over-fetch so the reranker has a richer candidate pool
-    candidate_k = top_k * RERANK_CANDIDATE_MULTIPLIER
+        return None
 
     bm25_retriever = _create_bm25_retriever(
         vectorstore,
-        top_k=candidate_k,
+        top_k=top_k,
         file_id=file_id,
         file_ids=file_ids,
     )
     if not bm25_retriever:
-        return []
+        return None
 
     chroma_retriever = _create_chroma_retriever(
         vectorstore,
-        top_k=candidate_k,
+        top_k=top_k,
         file_id=file_id,
         file_ids=file_ids,
     )
@@ -216,30 +226,7 @@ def similarity_search(
         weights=HYBRID_WEIGHTS,
     )
 
-    try:
-        results = ensemble_retriever.invoke(query)
-    except Exception:
-        fallback_chroma_retriever = vectorstore.as_retriever(
-            search_type="similarity",
-            search_kwargs={"k": max(candidate_k * 4, candidate_k)},
-        )
-        fallback_ensemble = EnsembleRetriever(
-            retrievers=[bm25_retriever, fallback_chroma_retriever],
-            weights=HYBRID_WEIGHTS,
-        )
-        results = fallback_ensemble.invoke(query)
-
-    results = _filter_documents_by_scope(
-        results,
-        file_id=file_id,
-        file_ids=file_ids,
-    )
-
-    # Format candidates then rerank → return top_k by cross-encoder score
-    candidates = [
-        {"text": doc.page_content, "metadata": doc.metadata} for doc in results
-    ]
-    return rerank_documents(query, candidates, top_k)
+    return ensemble_retriever
 
 
 def delete_file_embeddings(file_id: str):
