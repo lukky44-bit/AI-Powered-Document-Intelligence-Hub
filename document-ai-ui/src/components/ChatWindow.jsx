@@ -8,8 +8,14 @@ import ReactMarkdown from "react-markdown";
 const SOURCE_BADGE_MAP = {
   documents: { label: "📄 Document", background: "#ecfdf3", color: "#027a48" },
   wikipedia: { label: "🌐 Wikipedia", background: "#eff8ff", color: "#175cd3" },
+  web: { label: "🕸️ Web", background: "#fff7ed", color: "#c4320a" },
   documents_and_wikipedia: {
     label: "📄+🌐 Document + Wikipedia",
+    background: "#f9f5ff",
+    color: "#6941c6",
+  },
+  documents_plus_external: {
+    label: "📄+🌐 Document + External",
     background: "#f9f5ff",
     color: "#6941c6",
   },
