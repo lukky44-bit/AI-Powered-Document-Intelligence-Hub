@@ -11,6 +11,7 @@ from app.db.session import get_db
 from app.core.security import get_current_user
 from app.core.rbac import can_access_mode, has_admin_role
 from app.core.rate_limiter import limiter
+from app.services.guardrails_service import assess_query_guardrail
 
 router = APIRouter()
 
@@ -48,6 +49,22 @@ def rag_answer(
             raise HTTPException(
                 status_code=403,
                 detail=f"Your roles do not allow access to '{mode}' mode",
+            )
+
+        # Input guardrail: block harmful/prompt-injection queries before RAG.
+        guardrail = assess_query_guardrail(query)
+        if not guardrail.get("allowed", True):
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": guardrail.get(
+                        "block_message",
+                        "Request blocked by safety guardrail.",
+                    ),
+                    "category": guardrail.get("category", "blocked"),
+                    "reason": guardrail.get("reason", ""),
+                    "confidence": guardrail.get("confidence", 0.0),
+                },
             )
 
         # ---------- FILENAME / FILE_ID RESOLUTION ----------

@@ -9,6 +9,7 @@ from app.models.chat_message import ChatMessage
 from app.core.security import get_current_user
 from app.core.rbac import can_access_mode, has_admin_role
 from app.services.rag_service import generate_rag_answer, summarize_messages
+from app.services.guardrails_service import assess_query_guardrail
 from app.services.file_metadata_service import (
     get_accessible_file_ids,
     get_file_by_file_id,
@@ -224,6 +225,22 @@ def send_message(
         raise HTTPException(
             status_code=403,
             detail=f"Your roles do not allow access to '{mode}' mode",
+        )
+
+    # Input guardrail: block harmful/prompt-injection queries before DB writes.
+    guardrail = assess_query_guardrail(user_message)
+    if not guardrail.get("allowed", True):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": guardrail.get(
+                    "block_message",
+                    "Request blocked by safety guardrail.",
+                ),
+                "category": guardrail.get("category", "blocked"),
+                "reason": guardrail.get("reason", ""),
+                "confidence": guardrail.get("confidence", 0.0),
+            },
         )
 
     scoped_domain = MODE_DOMAIN_MAP.get(mode)

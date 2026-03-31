@@ -139,8 +139,16 @@ export default function ChatWindow({ activeChat, fileRefreshKey, onUploadSuccess
 
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (err) {
-      const backendError =
-        err?.response?.data?.detail || "Error sending message";
+      let backendError = "Error sending message";
+      const detail = err?.response?.data?.detail;
+
+      if (typeof detail === "string") {
+        backendError = detail;
+      } else if (detail && typeof detail === "object") {
+        // Guardrail or structured error response
+        backendError = detail.message || detail.reason || JSON.stringify(detail);
+      }
+
       setError(backendError);
     }
 
